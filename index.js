@@ -135,7 +135,7 @@ if (!DISCORD_TOKEN) {
 
 // === Express Web Server Setup ===
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || process.env.SERVER_PORT || 3000);
 const HEARTBEAT_INTERVAL_MS = 30_000;
 let discordWebRouter = null;
 
