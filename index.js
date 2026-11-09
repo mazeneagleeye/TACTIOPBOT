@@ -224,8 +224,17 @@ app.use((req, res) => {
   res.status(404).json({ error: "Not Found" });
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`🌐 running on http://localhost:${PORT}`);
+const server = app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🌐 running on http://0.0.0.0:${PORT}`);
+});
+
+server.on("error", (error) => {
+  if (error.code === "EADDRINUSE") {
+    console.error(`❌ Port ${PORT} is already in use`);
+  } else {
+    console.error(`❌ HTTP server error: ${error.message}`);
+  }
+  process.exit(1);
 });
 let shutdownPromise = null;
 
