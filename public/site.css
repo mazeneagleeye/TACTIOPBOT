@@ -160,6 +160,13 @@ video {
 }
 
 .brand-mark {
+  width: auto;
+  height: 32px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.brand-icon {
   width: 40px;
   height: 40px;
   flex: 0 0 40px;
@@ -1599,6 +1606,11 @@ html.js .reveal.is-visible {
   }
 
   .brand-mark {
+    width: auto;
+    height: 28px;
+  }
+
+  .brand-icon {
     width: 36px;
     height: 36px;
     flex-basis: 36px;
