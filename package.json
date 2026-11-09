@@ -13,7 +13,7 @@
     "fetch-font": "node downloadFont.js",
     "register-commands": "node deploy-commands.js",
     "test:db": "node scripts/test-mongodb.js",
-    "test": "node --test tests/clan-mission.test.js tests/seasonal-avatar.test.js"
+    "test": "node --test tests/clan-mission.test.js tests/seasonal-avatar.test.js tests/clan-war.test.js tests/client-ready-event.test.js tests/email-verification.test.js tests/session-crypto.test.js tests/bot-chat.test.js tests/web-db.test.js"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.11",
@@ -28,6 +28,7 @@
     "express-rate-limit": "^8.7.1",
     "express-session": "^1.19.0",
     "google-auth-library": "^10.3.0",
-    "mongodb": "^6.21.0"
+    "mongodb": "^6.21.0",
+    "nodemailer": "^10.3.1"
   }
 }

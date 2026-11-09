@@ -3,143 +3,476 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0b1425">
-    <title>TACTIOPBOT | Clan Mission Dashboard</title>
-    <link rel="stylesheet" href="/styles.css">
+    <meta name="theme-color" content="#090d12">
+    <meta name="description" content="TACTIOPBOT brings Tacticool clan operations, mission reminders, and Discord server settings into one command center.">
+    <title>TACTIOPBOT | Your Tactical Clan Assistant</title>
+    <link rel="preload" as="image" href="/media/images/logos/tactiopbot.png.jpeg">
+    <link rel="stylesheet" href="/site.css">
+    <script src="/site.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
   <body>
     <div class="page-shell">
       <header class="topbar">
-        <a class="brand" href="/" aria-label="TACTIOPBOT dashboard home">
-          <span class="brand-mark" aria-hidden="true">T</span>
-          <span>TACTIO<span>BOT</span></span>
+        <a class="brand" href="#home" aria-label="TACTIOPBOT home">
+          <img class="brand-mark" src="/media/images/logos/tactiopbot.png.jpeg" alt="">
+          <span>TACTIO<span class="brand-accent">PBOT</span></span>
         </a>
-        <div class="account">
-          <span id="user-name" class="user-name"></span>
-          <button id="logout-button" class="button button-quiet hidden" type="button">Sign out</button>
-        </div>
-      </header>
+        <button id="menu-toggle" class="menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="primary-navigation">
+          <span></span><span></span>
+        </button>
+        <nav id="primary-navigation" class="primary-navigation" aria-label="Main navigation">
+          <a href="#arsenal">Arsenal</a>
+          <a href="#battlefield">Battlefield</a>
+          <div class="account-tools">
+            <span id="user-name" class="user-name"></span>
+            <button id="logout-button" class="button button-quiet hidden" type="button">Sign out</button>
+          </div>
+          <a id="dashboard-link" href="#account-access" class="nav-cta" data-show-auth>Get started <span aria-hidden="true">↗</span></a>
+        </nav>
+</header>
 
-      <main>
-        <section class="hero">
-          <p class="eyebrow">SERVER CONTROL CENTER</p>
-          <h1>Your clan missions, under control.</h1>
-          <p class="hero-copy">Manage reset notifications for the Discord servers where you have permission.</p>
-        </section>
-
-        <p id="auth-notice" class="feedback feedback-error hidden" role="alert"></p>
-
-        <section id="loading-state" class="state-card" aria-live="polite">
-          <span class="loader" aria-hidden="true"></span>
-          <p>Checking your sign-in…</p>
-        </section>
-
-        <section id="login-state" class="state-card hidden">
-          <div class="auth-card">
-            <div class="auth-intro">
-              <p class="eyebrow">TACTIOPBOT ACCOUNT</p>
-              <h2>Sign in with Google</h2>
-              <p>Use your Google account to access the clan mission dashboard.</p>
+        <main>
+        <section id="home" class="hero">
+          <video class="hero-video" muted loop playsinline preload="none" poster="/media/images/backgrounds/WhatsApp%20Image%202026-11-02%20at%208.33.51%20PM%20(5).jpeg" aria-hidden="true">
+            <source data-src="/media/videos/landing-background.mp4" type="video/mp4">
+          </video>
+          <div class="hero-scrim" aria-hidden="true"></div>
+          <div class="hero-content">
+            <p class="eyebrow"><span class="status-dot"></span> TACTIOPBOT // CLAN OPERATIONS</p>
+            <div class="hero-logos" aria-label="Tacticool community and TACTIOPBOT">
+              <div class="hero-brand">
+                <img class="hero-brand-icon" src="/media/images/logos/tacticool.png.jpeg" alt="">
+                <img class="hero-brand-wordmark" src="/media/images/logos/tacticool-wordmark.png" alt="Tacticool">
+              </div>
+              <span aria-hidden="true"></span>
+              <div class="hero-brand">
+                <img class="hero-brand-icon" src="/media/images/logos/tactiopbot.png.jpeg" alt="">
+                <img class="hero-brand-wordmark" src="/media/images/logos/tactiopbot-wordmark.png" alt="TACTIOPBOT">
+              </div>
             </div>
-
-            <p id="login-error" class="feedback feedback-error hidden" role="alert"></p>
-            <div class="auth-providers">
-              <button id="google-button" class="button button-provider" type="button" disabled>
-                <span class="provider-mark provider-google" aria-hidden="true">G</span>
-                <span id="google-label">Google sign-in is not configured</span>
-              </button>
+            <h1 class="visually-hidden">TACTIOPBOT</h1>
+            <p class="hero-tagline">Your tactical clan assistant.</p>
+            <p class="hero-copy">Keep your Tacticool crew in sync. Mission reset reminders, clan tools, and server settings — ready when your squad is.</p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="#account-access" data-show-auth>Get started <span aria-hidden="true">↗</span></a>
+              <a class="text-link" href="#arsenal">Explore the arsenal <span aria-hidden="true">↓</span></a>
             </div>
-            <p class="auth-note">Discord is connected separately after Google sign-in and is only needed for server settings.</p>
+            <div class="hero-caption"><span>FIELD NOTES / 01</span><span>OPERATE AS ONE</span></div>
+          </div>
+          <div class="hero-side-label" aria-hidden="true">TACTICOOL COMMUNITY SYSTEM</div>
+        </section>
+
+        <section class="intro-strip reveal public-marketing" aria-label="About TACTIOPBOT">
+          <div class="wallpaper-rotator" aria-hidden="true">
+            <img class="is-active" src="/media/images/backgrounds/WhatsApp%20Image%202026-11-02%20at%208.33.51%20PM.jpeg" alt="">
+            <img src="/media/images/backgrounds/WhatsApp%20Image%202026-11-02%20at%208.33.51%20PM%20(1).jpeg" alt="">
+            <img src="/media/images/backgrounds/WhatsApp%20Image%202026-11-02%20at%208.33.51%20PM%20(2).jpeg" alt="">
+            <img src="/media/images/backgrounds/WhatsApp%20Image%202026-11-02%20at%208.33.51%20PM%20(3).jpeg" alt="">
+            <img src="/media/images/backgrounds/WhatsApp%20Image%202026-11-02%20at%208.33.51%20PM%20(4).jpeg" alt="">
+            <img src="/media/images/backgrounds/WhatsApp%20Image%202026-11-02%20at%208.33.51%20PM%20(5).jpeg" alt="">
+          </div>
+          <div class="wallpaper-scrim" aria-hidden="true"></div>
+          <p>One squad.<br><span>One signal.</span></p>
+          <p>TACTIOPBOT gives your Discord server the tools to keep clan operations organized — with fewer missed resets and more time in the fight.</p>
+          <a class="round-link" href="#arsenal" aria-label="See TACTIOPBOT features">↓</a>
+        </section>
+
+        <section id="arsenal" class="section arsenal-section public-marketing">
+          <div class="section-heading reveal">
+            <div>
+              <p class="eyebrow">01 / THE ARSENAL</p>
+              <h2>Squad tools.<br><span>Zero noise.</span></h2>
+            </div>
+            <p>Built around the moments that keep a clan moving — from the next mission reset to the next war.</p>
+          </div>
+
+          <div class="feature-grid">
+            <article class="feature-card reveal">
+              <img src="/media/images/dashboard/bot-chat.png.jpeg" alt="TACTIOPBOT Discord chat preview" loading="lazy">
+              <div class="feature-overlay"></div>
+              <div class="feature-copy">
+                <span class="feature-index">02 — STAY READY</span>
+                <h3>Mission reminders</h3>
+                <p>Set a channel and let your server know when clan missions reset.</p>
+              </div>
+              <span class="feature-arrow" aria-hidden="true">↗</span>
+            </article>
+            <article class="feature-card reveal">
+              <img src="/media/images/dashboard/search-for-id.png.jpeg" alt="Tacticool player search preview" loading="lazy">
+              <div class="feature-overlay"></div>
+              <div class="feature-copy">
+                <span class="feature-index">03 — FIND YOUR PEOPLE</span>
+                <h3>Player intel</h3>
+                <p>Keep useful player tools close to your community.</p>
+              </div>
+              <span class="feature-arrow" aria-hidden="true">↗</span>
+            </article>
           </div>
         </section>
 
-        <section id="connect-discord-state" class="state-card hidden">
-          <div class="auth-card connect-card">
-            <div class="state-icon" aria-hidden="true">↗</div>
-            <p class="eyebrow">ONE LAST STEP</p>
-            <h2>Connect your Discord account</h2>
-            <p id="connected-account-copy">Your website account is ready. Connect Discord when you want to manage server notifications and permissions.</p>
-            <a id="connect-discord-button" class="button button-primary" href="/auth/discord?link=1">Connect Discord</a>
-            <button id="account-logout-button" class="button button-quiet" type="button">Sign out</button>
-            <p id="connect-error" class="feedback feedback-error hidden" role="alert"></p>
+        <section class="operations-section reveal public-marketing">
+          <div class="operations-image">
+            <img src="/media/images/dashboard/video-announcements.png.jpeg" alt="TACTIOPBOT video announcement preview" loading="lazy">
+            <span class="image-stamp">TACTIOPBOT / FIELD SYSTEMS</span>
+          </div>
+          <div class="operations-copy">
+            <p class="eyebrow">02 / YOUR SERVER, YOUR RULES</p>
+            <h2>Keep the whole<br><span>crew connected.</span></h2>
+            <p>Sign in with Google, connect Discord, and manage mission notifications for the servers where you have permission. Choose the channel, role, and language that work for your squad.</p>
+            <a class="button button-outline" href="#account-access" data-show-auth>Configure your server <span aria-hidden="true">↗</span></a>
+            <div class="operations-meta"><span>PERMISSION-AWARE</span><span>MADE FOR DISCORD</span></div>
           </div>
         </section>
 
-        <section id="dashboard" class="dashboard hidden">
-          <div class="server-panel">
-            <label class="field-label" for="guild-select">Discord server</label>
-            <select id="guild-select" class="control">
-              <option value="">Select a server</option>
-            </select>
-            <p id="server-help" class="muted">Only servers where you have Manage Server or Administrator access are listed.</p>
+        <section id="battlefield" class="section battlefield-section public-marketing">
+          <div class="section-heading reveal">
+            <div>
+              <p class="eyebrow">03 / THE BATTLEFIELD</p>
+              <h2>Know the<br><span>ground.</span></h2>
+            </div>
+            <p>Every map has a story. Pick your drop point, rally your crew, and make the next run count.</p>
           </div>
+          <div class="map-grid">
+            <figure class="map-card map-card-large reveal">
+              <img src="/media/images/maps/factory-png.jpeg" alt="Factory map from Tacticool" loading="lazy">
+              <figcaption><span>01</span> FACTORY</figcaption>
+            </figure>
+            <figure class="map-card reveal">
+              <img src="/media/images/maps/frontier.png.jpeg" alt="Frontier map from Tacticool" loading="lazy">
+              <figcaption><span>02</span> FRONTIER</figcaption>
+            </figure>
+            <figure class="map-card reveal">
+              <img src="/media/images/maps/village.png.jpeg" alt="Village map from Tacticool" loading="lazy">
+              <figcaption><span>03</span> VILLAGE</figcaption>
+            </figure>
+          </div>
+        </section>
 
-          <section id="empty-state" class="state-card hidden">
-            <div class="state-icon" aria-hidden="true">◎</div>
-            <h2>No manageable servers found</h2>
-            <p>Make sure you are signed into the right Discord account and have Manage Server permission in a server where TACTIOPBOT is installed.</p>
+        <section class="final-call reveal public-marketing">
+          <video class="final-video" muted loop playsinline preload="none" aria-hidden="true">
+            <source data-src="/media/videos/gameplay-01.mp4" type="video/mp4">
+          </video>
+          <div class="final-scrim" aria-hidden="true"></div>
+          <div class="final-content">
+            <p class="eyebrow">THE SQUAD IS WAITING</p>
+            <h2>Ready when<br><span>you are.</span></h2>
+            <a class="button button-primary" href="#account-access" data-show-auth>Enter command center <span aria-hidden="true">↗</span></a>
+          </div>
+          <p class="final-motto">OLD IS GOLD</p>
+        </section>
+
+        <section id="account-access" class="account-section hidden">
+          <div class="account-heading reveal">
+            <p class="eyebrow">04 / COMMAND CENTER</p>
+            <h2>Your server.<br><span>Your call.</span></h2>
+          </div>
+          <p id="auth-notice" class="feedback feedback-error hidden" role="alert"></p>
+
+          <section id="loading-state" class="state-card" aria-live="polite">
+            <span class="loader" aria-hidden="true"></span>
+            <p>Checking your sign-in…</p>
           </section>
 
-          <section id="settings-panel" class="settings-card hidden">
-            <div class="card-heading">
-              <div>
-                <p class="eyebrow">NOTIFICATION SETTINGS</p>
-                <h2 id="selected-guild-name">Choose a server</h2>
+          <section id="login-state" class="state-card hidden">
+            <div class="auth-card">
+              <div class="auth-intro">
+                <p class="eyebrow">TACTIOPBOT ACCOUNT</p>
+                <h2>Choose how to sign in</h2>
+                <p>Create an account with your actual Tacticool clan name, or continue with a provider.</p>
               </div>
-              <span id="config-badge" class="badge">Not configured</span>
+              <p id="login-error" class="feedback feedback-error hidden" role="alert"></p>
+              <div class="auth-providers">
+                <button id="google-button" class="button button-provider" type="button" disabled>
+                  <span class="provider-mark provider-google" aria-hidden="true">G</span>
+                  <span id="google-label">Google sign-in is not configured</span>
+                </button>
+                <button id="discord-button" class="button button-provider" type="button" disabled>
+                  <span class="provider-mark" aria-hidden="true">D</span>
+                  <span id="discord-label">Discord sign-in is not configured</span>
+                </button>
+              </div>
+              <form id="email-login-form" class="email-auth-form">
+                <label class="field">
+                  <span>Email</span>
+                  <input id="login-email" class="control" type="email" autocomplete="email" maxlength="254" required>
+                </label>
+                <label class="field">
+                  <span>Password</span>
+                  <input id="login-password" class="control" type="password" autocomplete="current-password" minlength="12" maxlength="128" required>
+                </label>
+                <button id="email-login-button" class="button button-primary" type="submit">Sign in with email</button>
+                <p id="email-login-error" class="feedback feedback-error hidden" role="alert"></p>
+              </form>
+              <form id="email-verification-form" class="email-auth-form hidden">
+                <p id="email-verification-copy" class="auth-note" aria-live="polite"></p>
+                <label class="field" for="email-verification-code">
+                  <span>6-digit email code</span>
+                  <input id="email-verification-code" class="control" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+                </label>
+                <button id="email-verification-submit" class="button button-primary" type="submit">Verify and sign in</button>
+                <button id="email-verification-resend" class="button button-outline" type="button">Resend code</button>
+                <button id="email-verification-back" class="text-link auth-switch" type="button">Back</button>
+                <p id="email-verification-error" class="feedback feedback-error hidden" role="alert"></p>
+              </form>
+              <button id="show-registration-button" class="text-link auth-switch" type="button">Create an account with email</button>
+              <form id="email-registration-form" class="email-auth-form hidden">
+                <label class="field">
+                  <span>Full name</span>
+                  <input id="register-full-name" class="control" type="text" autocomplete="name" minlength="2" maxlength="100" required>
+                </label>
+                <label class="field">
+                  <span>Clan name</span>
+                  <input id="register-clan-name" class="control" type="text" autocomplete="off" maxlength="40" required>
+                  <small>Enter your actual Tacticool clan name. We do not verify it with game servers.</small>
+                </label>
+                <label class="field">
+                  <span>Email</span>
+                  <input id="register-email" class="control" type="email" autocomplete="email" maxlength="254" required>
+                </label>
+                <label class="field">
+                  <span>Password</span>
+                  <input id="register-password" class="control" type="password" autocomplete="new-password" minlength="12" maxlength="128" required>
+                  <small>Use 12–128 characters.</small>
+                </label>
+                <button id="email-register-button" class="button button-primary" type="submit">Create account</button>
+                <p id="email-register-error" class="feedback feedback-error hidden" role="alert"></p>
+              </form>
+              <button id="show-login-button" class="text-link auth-switch hidden" type="button">Back to sign in</button>
+              <p class="auth-note">Connect Discord after sign-in to manage Discord server settings.</p>
+            </div>
+          </section>
+
+          <section id="connect-discord-state" class="state-card hidden">
+            <div class="auth-card connect-card">
+              <div class="state-icon" aria-hidden="true">↗</div>
+              <p class="eyebrow">ONE LAST STEP</p>
+              <h2>Connect your Discord account</h2>
+              <p id="connected-account-copy">Your website account is ready. Connect Discord when you want to manage server notifications and permissions.</p>
+              <a id="connect-discord-button" class="button button-primary" href="/auth/discord?link=1">Connect Discord</a>
+              <button id="account-logout-button" class="button button-quiet" type="button">Sign out</button>
+              <p id="connect-error" class="feedback feedback-error hidden" role="alert"></p>
+            </div>
+          </section>
+
+          <section id="dashboard" class="dashboard hidden">
+            <section id="dashboard-home" class="dashboard-home">
+              <div class="dashboard-welcome">
+                <div>
+                  <p class="eyebrow">COMMAND CENTER / DASHBOARD</p>
+                  <h2>Welcome back,<br><span id="welcome-name">operator</span>.</h2>
+                  <p>Your clan: <strong id="welcome-clan-name"></strong></p>
+                </div>
+                <img class="welcome-operator" src="/media/images/operators/jp-cutout.png" alt="JP operator" loading="lazy">
+              </div>
+              <div class="dashboard-feature-grid" aria-label="TACTIOPBOT features">
+                <a class="dashboard-feature-card" href="/dashboard/bot-chat">
+                  <img src="/media/images/dashboard/bot-chat.png.jpeg" alt="" loading="lazy">
+                  <span class="feature-index">01 / COMMUNITY</span>
+                  <span class="dashboard-feature-title">Bot Chat</span>
+                  <span class="dashboard-feature-note">Clan chat, commands & notifications</span>
+                  <span class="feature-arrow" aria-hidden="true">↗</span>
+                </a>
+                <a class="dashboard-feature-card clan-war-feature" href="/dashboard/clan-war-manager">
+                  <img src="/media/images/dashboard/clan-war-manager.png.jpeg" alt="" loading="lazy">
+                  <video class="feature-preview-video" muted loop playsinline preload="none" poster="/media/images/dashboard/clan-war-manager.png.jpeg" aria-hidden="true">
+                    <source data-src="/media/videos/gameplay-01.mp4" type="video/mp4">
+                  </video>
+                  <span class="feature-index">02 / BUILD. BALANCE. BATTLE.</span>
+                  <span class="dashboard-feature-title">Clan War Manager</span>
+                  <span class="dashboard-feature-note">Build and balance your 5v5</span>
+                  <span class="feature-arrow" aria-hidden="true">↗</span>
+                </a>
+                <button class="dashboard-feature-card is-coming-soon" type="button" data-feature="search" aria-describedby="feature-status">
+                  <img src="/media/images/dashboard/search-for-id.png.jpeg" alt="" loading="lazy">
+                  <span class="feature-index">03 / PLAYER INTEL</span>
+                  <span class="dashboard-feature-title">Search for ID</span>
+                  <span class="dashboard-feature-note">Search service coming soon</span>
+                  <span class="feature-arrow" aria-hidden="true">↗</span>
+                </button>
+                <button class="dashboard-feature-card" type="button" data-feature="missions" aria-describedby="feature-status">
+                  <img src="/media/images/dashboard/video-announcements.png.jpeg" alt="" loading="lazy">
+                  <span class="feature-index">04 / STAY READY</span>
+                  <span class="dashboard-feature-title">Clan Missions</span>
+                  <span class="dashboard-feature-note">Missions and web reset reminders</span>
+                  <span class="feature-arrow" aria-hidden="true">↗</span>
+                </button>
+              </div>
+              <p id="feature-status" class="feature-status" role="status" aria-live="polite">Your clan tools are ready.</p>
+              <section class="profile-settings-card" aria-labelledby="profile-settings-heading">
+                <div>
+                  <p class="eyebrow">YOUR ACCOUNT</p>
+                  <h3 id="profile-settings-heading">TACTIOPBOT profile</h3>
+                  <p><span id="profile-full-name"></span><span id="profile-email"></span></p>
+                </div>
+                <form id="profile-settings-form" class="profile-settings-form">
+                  <label class="field" for="profile-full-name-input">
+                    <span>Name</span>
+                    <input id="profile-full-name-input" class="control" type="text" minlength="2" maxlength="100" autocomplete="name" required>
+                  </label>
+                  <label class="field" for="profile-clan-name">
+                    <span>Clan name</span>
+                    <input id="profile-clan-name" class="control" type="text" maxlength="40" required>
+                    <small>Your actual Tacticool clan name. TACTIOPBOT does not verify it against the game.</small>
+                  </label>
+                  <label class="field" for="profile-timezone-mode">
+                    <span>Reset time timezone</span>
+                    <select id="profile-timezone-mode" class="control">
+                      <option value="auto">Automatic — detect my timezone</option>
+                      <option value="manual">Choose a timezone</option>
+                    </select>
+                  </label>
+                  <div id="profile-timezone-fields" class="timezone-fields hidden">
+                    <label class="field" for="profile-timezone-search">
+                      <span>Search cities or timezones</span>
+                      <input id="profile-timezone-search" class="control" type="search" autocomplete="off" placeholder="Try Tokyo or Europe/London">
+                    </label>
+                    <label class="field" for="profile-timezone">
+                      <span>Timezone</span>
+                      <select id="profile-timezone" class="control" required></select>
+                    </label>
+                  </div>
+                  <button id="profile-save-button" class="button button-outline" type="submit">Save profile</button>
+                  <p id="profile-feedback" class="feedback hidden" role="status" aria-live="polite"></p>
+                </form>
+                <div class="profile-security">
+                  <form id="email-change-form" class="profile-security-form">
+                    <h4>Change email</h4>
+                    <label class="field" for="new-account-email">
+                      <span>New email</span>
+                      <input id="new-account-email" class="control" type="email" autocomplete="email" maxlength="254" required>
+                    </label>
+                    <button id="email-change-send" class="button button-outline" type="button">Send code to current email</button>
+                    <div id="email-change-verification" class="email-change-verification hidden">
+                      <p id="email-change-copy" class="auth-note" aria-live="polite"></p>
+                      <label class="field" for="email-change-code">
+                        <span>6-digit email code</span>
+                        <input id="email-change-code" class="control" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6">
+                      </label>
+                      <button id="email-change-verify" class="button button-primary" type="submit">Verify code</button>
+                      <button id="email-change-resend" class="button button-outline" type="button">Resend code</button>
+                    </div>
+                    <p id="email-change-feedback" class="feedback hidden" role="status" aria-live="polite"></p>
+                  </form>
+                  <form id="password-change-form" class="profile-security-form">
+                    <h4>Change password</h4>
+                    <label class="field" for="new-account-password">
+                      <span>New password</span>
+                      <input id="new-account-password" class="control" type="password" autocomplete="new-password" minlength="12" maxlength="128" required>
+                      <small>Use 12–128 characters.</small>
+                    </label>
+                    <button id="password-change-send" class="button button-outline" type="button">Send code to account email</button>
+                    <div id="password-change-verification" class="email-change-verification hidden">
+                      <p id="password-change-copy" class="auth-note" aria-live="polite"></p>
+                      <label class="field" for="password-change-code">
+                        <span>6-digit email code</span>
+                        <input id="password-change-code" class="control" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6">
+                      </label>
+                      <button id="password-change-verify" class="button button-primary" type="submit">Verify and change password</button>
+                      <button id="password-change-resend" class="button button-outline" type="button">Resend code</button>
+                    </div>
+                    <p id="password-change-feedback" class="feedback hidden" role="status" aria-live="polite"></p>
+                  </form>
+                  <section id="email-test-panel" class="profile-security-form hidden" aria-labelledby="email-test-heading">
+                    <h4 id="email-test-heading">Administrator email test</h4>
+                    <p class="auth-note">Send a branded delivery test to your verified account email.</p>
+                    <button id="email-test-button" class="button button-outline" type="button">Send test email</button>
+                    <p id="email-test-feedback" class="feedback hidden" role="status" aria-live="polite"></p>
+                  </section>
+                </div>
+              </section>
+              <p id="dashboard-integration-note" class="feedback hidden" role="status"></p>
+            </section>
+
+            <div id="server-panel" class="server-panel hidden">
+              <label class="field-label" for="guild-select">Discord server</label>
+              <select id="guild-select" class="control">
+                <option value="">Select a server</option>
+              </select>
+              <p id="server-help" class="muted">Only servers where you have Manage Server or Administrator access are listed.</p>
             </div>
 
-            <div id="settings-loading" class="inline-state hidden" aria-live="polite">
-              <span class="loader" aria-hidden="true"></span>
-              <span>Loading server settings…</span>
-            </div>
+            <section id="empty-state" class="state-card hidden">
+              <div class="state-icon" aria-hidden="true">◎</div>
+              <h2>No manageable servers found</h2>
+              <p>Make sure you are signed into the right Discord account and have Manage Server permission in a server where TACTIOPBOT is installed.</p>
+            </section>
 
-            <form id="settings-form" class="form-grid hidden">
-              <label class="field">
-                <span>Notification channel</span>
-                <select id="channel-select" class="control" required>
-                  <option value="">Choose a text channel</option>
-                </select>
-                <small>Text channels the bot can access are shown.</small>
-              </label>
-
-              <label class="field">
-                <span>Role to mention <span class="optional">(optional)</span></span>
-                <select id="role-select" class="control">
-                  <option value="">No role mention</option>
-                </select>
-                <small>Only roles in this server can be selected.</small>
-              </label>
-
-              <label class="field">
-                <span>Message language</span>
-                <select id="language-select" class="control"></select>
-              </label>
-
-              <label class="toggle-field" for="enabled-toggle">
-                <span>
-                  <strong>Notifications enabled</strong>
-                  <small>Send a reminder when clan missions reset.</small>
-                </span>
-                <input id="enabled-toggle" type="checkbox">
-              </label>
-
-              <div class="form-actions">
-                <button id="save-button" class="button button-primary" type="submit">Save settings</button>
-                <button id="delete-button" class="button button-danger hidden" type="button">Delete settings</button>
+            <section id="settings-panel" class="settings-card hidden">
+              <div class="card-heading">
+                <div>
+                  <p class="eyebrow">NOTIFICATION SETTINGS</p>
+                  <h2 id="selected-guild-name">Choose a server</h2>
+                </div>
+                <span id="config-badge" class="badge">Not configured</span>
               </div>
-            </form>
-
-            <p id="feedback" class="feedback hidden" role="status" aria-live="polite"></p>
+              <div id="settings-loading" class="inline-state hidden" aria-live="polite">
+                <span class="loader" aria-hidden="true"></span>
+                <span>Loading server settings…</span>
+              </div>
+              <form id="settings-form" class="form-grid hidden">
+                <label class="field">
+                  <span>Notification channel</span>
+                  <select id="channel-select" class="control" required>
+                    <option value="">Choose a text channel</option>
+                  </select>
+                  <small>Text channels the bot can access are shown.</small>
+                </label>
+                <label class="field">
+                  <span>Role to mention <span class="optional">(optional)</span></span>
+                  <select id="role-select" class="control">
+                    <option value="">No role mention</option>
+                  </select>
+                  <small>Only roles in this server can be selected.</small>
+                </label>
+                <label class="field">
+                  <span>Message language</span>
+                  <select id="language-select" class="control"></select>
+                </label>
+                <label class="toggle-field" for="enabled-toggle">
+                  <span>
+                    <strong>Notifications enabled</strong>
+                    <small>Send a reminder when clan missions reset.</small>
+                  </span>
+                  <input id="enabled-toggle" type="checkbox">
+                </label>
+                <div class="form-actions">
+                  <button id="save-button" class="button button-primary" type="submit">Save settings</button>
+                  <button id="delete-button" class="button button-danger hidden" type="button">Delete settings</button>
+                </div>
+              </form>
+              <p id="feedback" class="feedback hidden" role="status" aria-live="polite"></p>
+            </section>
           </section>
         </section>
       </main>
 
-      <footer>
-        <span>TACTIOPBOT</span>
-        <span>Settings are shared securely with the Discord bot.</span>
+      <footer class="site-footer">
+        <a class="footer-brand" href="#home" aria-label="TACTIOPBOT home">
+          <img src="/media/images/logos/tactiopbot-wordmark.png" alt="">
+        </a>
+        <span>Made for the Tacticool community. <strong>OLD IS GOLD.</strong></span>
+        <a href="#home">Back to top ↑</a>
       </footer>
     </div>
+    <details class="music-player">
+      <summary aria-label="Open music player"><span aria-hidden="true">♫</span> Music</summary>
+      <div class="music-player-panel">
+        <label for="music-track">TACTIOPBOT soundtrack</label>
+        <select id="music-track" class="control">
+          <option value="1">Track 01</option>
+          <option value="2">Track 02</option>
+          <option value="3">Track 03</option>
+          <option value="4">Track 04</option>
+          <option value="5">Track 05</option>
+          <option value="6">Track 06</option>
+          <option value="7">Track 07</option>
+          <option value="8">Track 08</option>
+          <option value="9">Track 09</option>
+        </select>
+        <audio id="music-audio" controls controlsList="nodownload" loop preload="none"></audio>
+        <p id="music-status" class="music-status" role="status" aria-live="polite">Choose a track and press play.</p>
+      </div>
+    </details>
   </body>
 </html>

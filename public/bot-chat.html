@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#090d12">
+    <meta name="description" content="TACTIOPBOT clan chat and mission commands.">
+    <title>Clan Chat | TACTIOPBOT</title>
+    <link rel="stylesheet" href="/bot-chat.css">
+    <script src="/mission-reset.js" defer></script>
+    <script src="/bot-chat.js" defer></script>
+  </head>
+  <body>
+    <main class="chat-shell">
+      <header class="chat-header">
+        <a class="brand" href="/" aria-label="TACTIOPBOT home">
+          <img src="/media/images/logos/tactiopbot.png.jpeg" alt="">
+          <span>TACTIO<span>PBOT</span></span>
+        </a>
+        <div class="room-heading">
+          <p class="eyebrow">TACTICOOL / CLAN CHANNEL</p>
+          <h1 id="room-name">Clan Chat</h1>
+          <p id="account-name" class="account-name">Connecting to your website account…</p>
+        </div>
+        <div class="header-actions">
+          <button id="notifications-button" class="icon-button" type="button" aria-expanded="false" aria-controls="notifications-panel" aria-label="Open notifications">
+            <span aria-hidden="true">♢</span>
+            <span id="notification-count" class="notification-count hidden" aria-label="Unread notifications">0</span>
+          </button>
+          <a class="header-link" href="/">Dashboard</a>
+          <button id="logout-button" class="header-link button-link" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <section class="mission-strip" aria-label="Clan Mission reset">
+        <div class="mission-mark">
+          <img src="/media/images/logos/tacticool.png.jpeg" alt="Tacticool">
+        </div>
+        <div>
+          <p class="eyebrow">NEXT CLAN MISSION RESET</p>
+          <strong><time id="next-reset">Loading reset schedule…</time></strong>
+          <small id="mission-reset-zone"></small>
+        </div>
+        <button id="notification-settings-button" class="subtle-button" type="button">Reminder settings</button>
+      </section>
+
+      <section class="chat-layout">
+        <section class="conversation" aria-label="Clan conversation">
+          <div class="conversation-heading">
+            <div>
+              <p class="eyebrow">LIVE SQUAD CHANNEL</p>
+              <h2>Clan chat</h2>
+            </div>
+            <button id="commands-button" class="subtle-button" type="button" aria-expanded="false" aria-controls="commands-panel">Commands</button>
+          </div>
+          <section id="commands-panel" class="commands-panel hidden" aria-label="Available commands">
+            <p>Choose a command. Clan Mission and Missions open an eight-slot mission selector.</p>
+            <ul id="command-list"></ul>
+          </section>
+          <ol id="messages" class="messages" aria-live="polite" aria-relevant="additions text" aria-label="Clan chat messages">
+            <li class="empty-state">Loading clan chat…</li>
+          </ol>
+          <form id="message-form" class="composer">
+            <label class="visually-hidden" for="message-input">Write a clan message or command</label>
+            <textarea id="message-input" name="content" rows="1" maxlength="500" placeholder="Enter message…" required></textarea>
+            <div class="composer-footer">
+              <p>Enter to send · Shift+Enter for a new line · <span id="character-count">0/500</span></p>
+              <button id="send-button" class="send-button" type="submit" aria-label="Send message" title="Send message"><span aria-hidden="true">➜</span></button>
+            </div>
+          </form>
+          <p id="chat-status" class="status" role="status" aria-live="polite"></p>
+        </section>
+
+        <aside class="right-rail">
+          <section class="rail-card reminder-card">
+            <p class="eyebrow">WEB NOTIFICATIONS</p>
+            <h2>Stay on reset</h2>
+            <p>Get a saved notification in this chat when the next Clan Mission cycle starts.</p>
+            <label class="toggle-row" for="mission-notifications">
+              <span>Clan Mission reminders</span>
+              <input id="mission-notifications" type="checkbox">
+            </label>
+            <label class="setting-label" for="notification-language">Notification language</label>
+            <select id="notification-language">
+              <option value="en">English</option>
+              <option value="ru">Русский</option>
+              <option value="fr">Français</option>
+              <option value="pl">Polski</option>
+              <option value="ko">한국어</option>
+              <option value="de">Deutsch</option>
+              <option value="it">Italiano</option>
+              <option value="es">Español</option>
+              <option value="pt-PT">Português (Portugal)</option>
+              <option value="pt-BR">Português (Brasil)</option>
+              <option value="th">ภาษาไทย</option>
+              <option value="ja">日本語</option>
+              <option value="tr">Türkçe</option>
+              <option value="zh-CN">简体中文</option>
+              <option value="zh-TW">繁體中文</option>
+              <option value="ms">Bahasa Melayu</option>
+              <option value="ar">العربية</option>
+              <option value="id">Bahasa Indonesia</option>
+              <option value="uk">Українська</option>
+            </select>
+            <p id="settings-status" class="settings-status" role="status" aria-live="polite"></p>
+          </section>
+        </aside>
+      </section>
+
+      <aside id="notifications-panel" class="notifications-panel hidden" aria-label="Notifications">
+        <div class="notifications-heading">
+          <div>
+            <p class="eyebrow">INBOX</p>
+            <h2>Notifications</h2>
+          </div>
+          <button id="mark-read-button" class="subtle-button" type="button">Mark all read</button>
+        </div>
+        <ol id="notifications-list" class="notifications-list">
+          <li class="empty-state">No notifications yet.</li>
+        </ol>
+      </aside>
+    </main>
+  </body>
+</html>

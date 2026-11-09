@@ -150,14 +150,20 @@ const heartbeatInterval = setInterval(() => {
 
 app.use((req, res, next) => {
   res.set({
-    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
   });
   next();
 });
+  next();
+});
 
+app.get("/clan-war-manager.html", (_req, res) => {
+  res.redirect("/dashboard/clan-war-manager");
+});
+app.use("/media", express.static(path.join(__dirname, "TACTIOPBOT_WEBSITE", "public")));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/health", async (req, res) => {
@@ -185,12 +191,36 @@ app.get("/", (req, res) => {
 });
 
 app.use((req, res, next) => {
-  if (!req.path.startsWith("/auth/") && !req.path.startsWith("/api/")) return next();
+  const protectedPath =
+    req.path.startsWith("/auth/") ||
+    req.path.startsWith("/api/") ||
+    req.path.startsWith("/dashboard/") ||
+    req.path === "/profile/complete";
+  if (!protectedPath) return next();
   if (!discordWebRouter) {
     return res.status(503).json({ error: "The website database service is unavailable." });
   }
   return discordWebRouter(req, res, next);
 });
+
+app.get("/profile/complete", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "profile.html"));
+});
+
+app.get("/dashboard/settings", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "settings.html"));
+});
+
+app.get("/dashboard/clan-war-manager", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "clan-war-manager.html"));
+});
+
+app.get(
+  ["/dashboard/clan-war-manager/history", "/dashboard/clan-war-manager/:warId"],
+  (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "clan-war-manager.html"));
+  }
+);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Not Found" });

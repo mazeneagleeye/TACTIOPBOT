@@ -136,11 +136,59 @@ const accountCollection = {
     return { acknowledged: true, matchedCount: 1, modifiedCount: 1 };
   },
 };
+const clanWarDocuments = new Map();
+const clanWarCollection = {
+  async createIndex() {
+    return "test-clan-war-index";
+  },
+  async insertOne(document) {
+    clanWarDocuments.set(String(document._id), { ...document, players: clone(document.players) });
+    return { acknowledged: true, insertedId: document._id };
+  },
+  async findOne(filter) {
+    const document = clanWarDocuments.get(String(filter._id));
+    if (!document || (filter.ownerUserId && document.ownerUserId !== filter.ownerUserId)) return null;
+    return { ...document, players: clone(document.players) };
+  },
+  find(filter = {}) {
+    let documents = Array.from(clanWarDocuments.values())
+      .filter((document) => matchesFilter(document, filter));
+    const cursor = {
+      sort(sort) {
+        const [key, direction] = Object.entries(sort)[0] || [];
+        if (key) documents = documents.sort((a, b) =>
+          (a[key] - b[key]) * direction
+        );
+        return cursor;
+      },
+      limit(count) {
+        documents = documents.slice(0, count);
+        return cursor;
+      },
+      toArray: async () => documents.map((document) => ({
+        ...document,
+        players: clone(document.players),
+      })),
+    };
+    return cursor;
+  },
+  async findOneAndUpdate(filter, update) {
+    const current = clanWarDocuments.get(String(filter._id));
+    if (!current || (filter.ownerUserId && current.ownerUserId !== filter.ownerUserId)) return null;
+    const updated = { ...current, ...clone(update.$set || {}) };
+    for (const [key, amount] of Object.entries(update.$inc || {})) {
+      updated[key] = (updated[key] || 0) + amount;
+    }
+    clanWarDocuments.set(String(filter._id), updated);
+    return { ...updated, players: clone(updated.players) };
+  },
+};
 const fakeDatabase = {
   databaseName: "TACTIOPBOT",
   collection: (name) => {
     if (name === "cm_notification_settings") return settingsCollection;
     if (name === "web_accounts") return accountCollection;
+    if (name === "web_clan_wars") return clanWarCollection;
     assert.fail(`Unexpected collection: ${name}`);
   },
 };
@@ -539,11 +587,11 @@ test("Google website authentication fails closed when configuration is absent", 
   assert.deepEqual(await response.json(), { error: "Website authentication is not configured." });
 });
 
-test("website-only launcher requires an isolated development database and local callback", () => {
+test("website-only launcher uses the shared database configuration and local callback", () => {
   const { getDevelopmentConfig } = require("../scripts/start-web-dev");
   const validEnvironment = {
-    TACTIOBOT_DEV_MONGODB_URI: "mongodb://127.0.0.1:27017",
-    TACTIOBOT_DEV_MONGODB_DB_NAME: "TACTIOPBOT_DEV_LOCAL",
+    MONGODB_URI: "mongodb://127.0.0.1:27017",
+    TACTIOPBOT_WEB_MONGODB_URI: "mongodb://127.0.0.1:27018",
     TACTIOBOT_DEV_PORT: "3000",
     TACTIOBOT_DEV_GOOGLE_OAUTH_ENABLED: "true",
     TACTIOBOT_DEV_GOOGLE_OAUTH_REDIRECT_URI: "http://localhost:3000/auth/google/callback",
@@ -554,20 +602,33 @@ test("website-only launcher requires an isolated development database and local 
     WEB_SESSION_SECRET: "test-session-secret-with-at-least-32-characters",
   };
   const config = getDevelopmentConfig(validEnvironment);
-  assert.equal(config.databaseName, "TACTIOPBOT_DEV_LOCAL");
   assert.equal(config.port, 3000);
+  assert.equal(config.mongoUriSource, "MONGODB_URI");
+  assert.equal(config.uri, undefined);
+  assert.equal(config.databaseName, undefined);
   assert.equal(config.googleEnabled, true);
   assert.equal(config.googleRedirectUri, "http://localhost:3000/auth/google/callback");
   assert.equal(config.googleClientId, "test-dev-client.apps.googleusercontent.com");
   assert.equal(config.googleClientSecret, "test-dev-google-client-secret");
 
+  const missingMongoConfig = { ...validEnvironment };
+  delete missingMongoConfig.MONGODB_URI;
+  delete missingMongoConfig.TACTIOPBOT_WEB_MONGODB_URI;
   assert.throws(
-    () => getDevelopmentConfig({ ...validEnvironment, MONGODB_URI: validEnvironment.TACTIOBOT_DEV_MONGODB_URI }),
-    /must differ from MONGODB_URI/
+    () => getDevelopmentConfig(missingMongoConfig),
+    /Set MONGODB_URI or TACTIOPBOT_WEB_MONGODB_URI/
   );
+  const overrideOnlyConfig = getDevelopmentConfig({
+    ...validEnvironment,
+    MONGODB_URI: undefined,
+  });
+  assert.equal(overrideOnlyConfig.mongoUriSource, "TACTIOPBOT_WEB_MONGODB_URI");
   assert.throws(
-    () => getDevelopmentConfig({ ...validEnvironment, TACTIOBOT_DEV_MONGODB_DB_NAME: "TACTIOPBOT" }),
-    /beginning TACTIOPBOT_DEV_/
+    () => getDevelopmentConfig({
+      ...validEnvironment,
+      TACTIOPBOT_WEB_MONGODB_DB_NAME: "OTHER_DATABASE",
+    }),
+    /must be TACTIOPBOT/
   );
   assert.throws(
     () => getDevelopmentConfig({
@@ -584,16 +645,24 @@ test("website-only launcher requires an isolated development database and local 
   assert.equal(googleDisabled.googleClientId, undefined);
   assert.equal(googleDisabled.googleClientSecret, undefined);
 
+  const sharedCredentialsEnvironment = { ...validEnvironment };
+  delete sharedCredentialsEnvironment.TACTIOBOT_DEV_GOOGLE_CLIENT_ID;
+  delete sharedCredentialsEnvironment.TACTIOBOT_DEV_GOOGLE_CLIENT_SECRET;
+  const sharedCredentialsConfig = getDevelopmentConfig(sharedCredentialsEnvironment);
+  assert.equal(sharedCredentialsConfig.googleClientId, "production-client.apps.googleusercontent.com");
+  assert.equal(sharedCredentialsConfig.googleClientSecret, "production-google-client-secret");
+
   assert.throws(
     () => getDevelopmentConfig({
       ...validEnvironment,
+      GOOGLE_CLIENT_SECRET: undefined,
       TACTIOBOT_DEV_GOOGLE_CLIENT_SECRET: undefined,
     }),
     /TACTIOPBOT_DEV_GOOGLE_CLIENT_ID and TACTIOPBOT_DEV_GOOGLE_CLIENT_SECRET/
   );
 });
 
-test("website-only OAuth router disables Discord and guild APIs", async (t) => {
+test("website-only OAuth router enables sign-in but keeps guild APIs unavailable", async (t) => {
   const keys = [
     "CLIENT_ID",
     "CLIENT_SECRET",
@@ -637,10 +706,16 @@ test("website-only OAuth router disables Discord and guild APIs", async (t) => {
 
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
   const providers = await fetch(`${baseUrl}/auth/providers`);
-  assert.deepEqual(await providers.json(), { discord: false, google: false });
+  assert.deepEqual(await providers.json(), {
+    discord: true,
+    google: false,
+    discordServerManagement: false,
+    emailTestAdmin: false,
+  });
 
   const discordLogin = await fetch(`${baseUrl}/auth/discord`, { redirect: "manual" });
-  assert.equal(discordLogin.status, 503);
+  assert.equal(discordLogin.status, 302);
+  assert.equal(new URL(discordLogin.headers.get("location")).origin, "https://discord.com");
 
   const dashboardApi = await fetch(`${baseUrl}/api/guilds`);
   assert.equal(dashboardApi.status, 404);
@@ -649,7 +724,7 @@ test("website-only OAuth router disables Discord and guild APIs", async (t) => {
   });
 });
 
-test("Google is required for website accounts and unconfigured providers stay unavailable", async (t) => {
+test("unconfigured providers stay unavailable and reject invalid email login", async (t) => {
   const keys = [
     "CLIENT_ID",
     "CLIENT_SECRET",
@@ -674,6 +749,10 @@ test("Google is required for website accounts and unconfigured providers stay un
     client: {},
     db: fakeDatabase,
     discordClient: { guilds: { fetch: async () => null } },
+    verificationMailer: {
+      isConfigured: () => false,
+      sendCode: async () => assert.fail("Unconfigured verification mailer must not send email."),
+    },
   }));
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -690,7 +769,12 @@ test("Google is required for website accounts and unconfigured providers stay un
 
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
   const providers = await fetch(`${baseUrl}/auth/providers`);
-  assert.deepEqual(await providers.json(), { discord: false, google: false });
+  assert.deepEqual(await providers.json(), {
+    discord: false,
+    google: false,
+    discordServerManagement: true,
+    emailTestAdmin: false,
+  });
 
   const googleStart = await fetch(`${baseUrl}/auth/google`, { redirect: "manual" });
   assert.equal(googleStart.status, 503);
@@ -707,8 +791,33 @@ test("Google is required for website accounts and unconfigured providers stay un
     headers: { Origin: baseUrl, "Content-Type": "application/json" },
     body: JSON.stringify({ email: "person@example.com", password: "a-password" }),
   });
-  assert.equal(passwordLogin.status, 404);
+  assert.equal(passwordLogin.status, 400);
   assert.equal(accountDocuments.size, 0);
+
+  const validPassword = "a-valid-test-password";
+  const salt = Buffer.alloc(16, 1);
+  const passwordHash = crypto.scryptSync(validPassword, salt, 64, {
+    N: 32_768,
+    r: 8,
+    p: 1,
+    maxmem: 64 * 1024 * 1024,
+  });
+  const accountId = new ObjectId().toHexString();
+  accountDocuments.set(accountId, {
+    _id: accountId,
+    normalizedEmail: "person@example.com",
+    passwordHash: `scrypt$32768$8$1$${salt.toString("base64url")}$${passwordHash.toString("base64url")}`,
+  });
+  const emailLogin = await fetch(`${baseUrl}/auth/login`, {
+    method: "POST",
+    headers: { Origin: baseUrl, "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "person@example.com", password: validPassword }),
+  });
+  assert.equal(emailLogin.status, 503);
+  assert.deepEqual(await emailLogin.json(), {
+    error: "Email sign-in needs SMTP email settings on the server. Configure SMTP_HOST, SMTP_USER, SMTP_PASS and EMAIL_FROM, or use Google/Discord sign-in.",
+    code: "email_verification_not_configured",
+  });
 });
 
 test("Google OIDC validates state, PKCE, nonce, claims, and account conflicts", async (t) => {
@@ -780,7 +889,12 @@ test("Google OIDC validates state, PKCE, nonce, claims, and account conflicts", 
 
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
   const providers = await fetch(`${baseUrl}/auth/providers`);
-  assert.deepEqual(await providers.json(), { discord: false, google: true });
+  assert.deepEqual(await providers.json(), {
+    discord: false,
+    google: true,
+    discordServerManagement: true,
+    emailTestAdmin: false,
+  });
 
   const startLogin = async () => fetch(`${baseUrl}/auth/google`, { redirect: "manual" });
   const authorization = await startLogin();
@@ -817,7 +931,8 @@ test("Google OIDC validates state, PKCE, nonce, claims, and account conflicts", 
     `${baseUrl}/auth/google/callback?state=${rejectedState}&code=test-code`,
     { redirect: "manual" }
   );
-  assert.equal(badNonce.status, 401);
+  assert.equal(badNonce.status, 302);
+  assert.equal(badNonce.headers.get("location"), "/?auth_error=google_unverified");
   assert.equal(accountDocuments.size, 0);
 
   const unverifiedLogin = await startLogin();
@@ -832,7 +947,8 @@ test("Google OIDC validates state, PKCE, nonce, claims, and account conflicts", 
     `${baseUrl}/auth/google/callback?state=${unverifiedState}&code=test-code`,
     { redirect: "manual" }
   );
-  assert.equal(unverifiedEmail.status, 401);
+  assert.equal(unverifiedEmail.status, 302);
+  assert.equal(unverifiedEmail.headers.get("location"), "/?auth_error=google_unverified");
   assert.equal(accountDocuments.size, 0);
 
   const successfulLogin = await startLogin();
@@ -840,6 +956,7 @@ test("Google OIDC validates state, PKCE, nonce, claims, and account conflicts", 
   googleProfile = {
     sub: "google-subject-1",
     email: " Person@Example.com ",
+    name: "Google User",
     email_verified: true,
     nonce: sessionState.googleOAuthNonce,
   };
@@ -848,15 +965,15 @@ test("Google OIDC validates state, PKCE, nonce, claims, and account conflicts", 
     { redirect: "manual" }
   );
   assert.equal(successfulCallback.status, 302);
-  assert.equal(successfulCallback.headers.get("location"), "/");
+  assert.equal(successfulCallback.headers.get("location"), "/profile/complete");
   assert.deepEqual(tokenExchange, { code: "test-code", codeVerifier: "test-code-verifier" });
   assert.equal(accountDocuments.size, 1);
   const googleAccount = Array.from(accountDocuments.values())[0];
   assert.equal(googleAccount.email, "person@example.com");
   assert.equal(googleAccount.normalizedEmail, "person@example.com");
   assert.equal(googleAccount.googleId, "google-subject-1");
+  assert.equal(googleAccount.fullName, "Google User");
   assert.equal(Object.hasOwn(googleAccount, "passwordHash"), false);
-  assert.equal(Object.hasOwn(googleAccount, "displayName"), false);
   assert.equal(sessionState.account.email, "person@example.com");
   const currentGoogleAccount = await fetch(`${baseUrl}/api/me`);
   assert.deepEqual(await currentGoogleAccount.json(), {
@@ -864,12 +981,30 @@ test("Google OIDC validates state, PKCE, nonce, claims, and account conflicts", 
     account: {
       id: String(googleAccount._id),
       email: "person@example.com",
-      displayName: "",
+      displayName: "Google User",
+      fullName: "Google User",
     },
   });
   const unconnectedGuilds = await fetch(`${baseUrl}/api/guilds`);
   assert.equal(unconnectedGuilds.status, 403);
   assert.equal((await unconnectedGuilds.json()).code, "discord_required");
+
+  const repeatLogin = await startLogin();
+  const repeatState = new URL(repeatLogin.headers.get("location")).searchParams.get("state");
+  googleProfile = {
+    sub: "google-subject-1",
+    email: "person@example.com",
+    name: "Google User",
+    email_verified: true,
+    nonce: sessionState.googleOAuthNonce,
+  };
+  const existingGoogleLogin = await fetch(
+    `${baseUrl}/auth/google/callback?state=${repeatState}&code=test-code`,
+    { redirect: "manual" }
+  );
+  assert.equal(existingGoogleLogin.status, 302);
+  assert.equal(existingGoogleLogin.headers.get("location"), "/profile/complete");
+  assert.equal(accountDocuments.size, 1);
 
   const existingId = await accountCollection.insertOne({
     normalizedEmail: "existing@example.com",
@@ -984,6 +1119,7 @@ test("OAuth callback rejects invalid state and guild APIs reject unauthorized se
     normalizedEmail: "google-user@example.com",
     email: "google-user@example.com",
     googleId: "google-subject-discord-test",
+    clanName: "Test Clan",
   })).insertedId;
   sessionState = {
     user: { id: "12345678901234567", username: "test-user", globalName: null },
@@ -1025,6 +1161,7 @@ test("OAuth callback rejects invalid state and guild APIs reject unauthorized se
   const client = { guilds: { fetch: (...args) => botGuildFetch(...args) } };
   const express = require("express");
   const app = express();
+  app.set("trust proxy", 1);
   app.use(createDiscordOAuthRouter({
     client: {},
     db: fakeDatabase,
@@ -1045,46 +1182,60 @@ test("OAuth callback rejects invalid state and guild APIs reject unauthorized se
   });
 
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
-  const discordOnlyStart = await originalFetch(`${baseUrl}/auth/discord`, { redirect: "manual" });
-  assert.equal(discordOnlyStart.status, 401);
+  const request = (url, options = {}) => originalFetch(url, {
+    ...options,
+    headers: {
+      "X-Forwarded-For": "198.51.100.33",
+      ...(options.headers || {}),
+    },
+  });
+  const discordOnlyStart = await request(`${baseUrl}/auth/discord`, { redirect: "manual" });
+  assert.equal(discordOnlyStart.status, 302);
+  const unauthenticatedAuthorization = new URL(discordOnlyStart.headers.get("location"));
+  const discordOnlyState = unauthenticatedAuthorization.searchParams.get("state");
+  assert.equal(unauthenticatedAuthorization.searchParams.get("scope"), "identify email guilds");
 
-  const discordOnlyApi = await originalFetch(`${baseUrl}/api/guilds`);
+  const discordOnlyApi = await request(`${baseUrl}/api/guilds`);
   assert.equal(discordOnlyApi.status, 403);
   assert.deepEqual(await discordOnlyApi.json(), {
     error: "Discord connection is required for this feature. Connect Discord to continue.",
     code: "discord_required",
   });
-  sessionState.oauthState = "discord-only-callback-state";
-  const discordOnlyCallback = await originalFetch(
-    `${baseUrl}/auth/discord/callback?state=discord-only-callback-state&code=untrusted-code`,
+  sessionState.oauthState = discordOnlyState;
+  sessionState.oauthMode = "login";
+  const discordOnlyCallback = await request(
+    `${baseUrl}/auth/discord/callback?state=${discordOnlyState}&error=access_denied`,
     { redirect: "manual" }
   );
-  assert.equal(discordOnlyCallback.status, 401);
+  assert.equal(discordOnlyCallback.status, 302);
+  assert.equal(discordOnlyCallback.headers.get("location"), "/?auth_error=discord_cancelled");
   assert.equal(sessionState.user.id, "12345678901234567");
 
   sessionState.googleAuthenticated = true;
+  sessionState.emailVerified = true;
   sessionState.account = {
     id: String(googleAccountId),
     email: "google-user@example.com",
     displayName: "",
+    clanName: "Test Clan",
   };
-  const loginStart = await originalFetch(`${baseUrl}/auth/discord`, { redirect: "manual" });
+  const loginStart = await request(`${baseUrl}/auth/discord?link=1`, { redirect: "manual" });
   assert.equal(loginStart.status, 302);
   const authorizationUrl = new URL(loginStart.headers.get("location"));
   assert.equal(authorizationUrl.origin, "https://discord.com");
   assert.equal(authorizationUrl.pathname, "/api/v10/oauth2/authorize");
   assert.equal(authorizationUrl.searchParams.get("client_id"), "test-client-id");
   assert.equal(authorizationUrl.searchParams.get("redirect_uri"), process.env.DISCORD_OAUTH_REDIRECT_URI);
-  assert.equal(authorizationUrl.searchParams.get("scope"), "identify guilds");
+  assert.equal(authorizationUrl.searchParams.get("scope"), "identify email guilds");
   assert.match(authorizationUrl.searchParams.get("state"), /^[a-f0-9]{64}$/);
   assert.equal(sessionState.oauthState, authorizationUrl.searchParams.get("state"));
   assert.equal(authorizationUrl.searchParams.has("client_secret"), false);
 
-  const callback = await originalFetch(`${baseUrl}/auth/discord/callback?state=invalid&code=invalid`);
+  const callback = await request(`${baseUrl}/auth/discord/callback?state=invalid&code=invalid`);
   assert.equal(callback.status, 400);
   assert.deepEqual(await callback.json(), { error: "Invalid OAuth state." });
 
-  const currentUser = await originalFetch(`${baseUrl}/api/me`);
+  const currentUser = await request(`${baseUrl}/api/me`);
   assert.equal(currentUser.status, 200);
   assert.deepEqual(await currentUser.json(), {
     user: { id: "12345678901234567", username: "test-user", globalName: null },
@@ -1092,10 +1243,11 @@ test("OAuth callback rejects invalid state and guild APIs reject unauthorized se
       id: String(googleAccountId),
       email: "google-user@example.com",
       displayName: "",
+      clanName: "Test Clan",
     },
   });
 
-  const protectedSettings = await originalFetch(
+  const protectedSettings = await request(
     `${baseUrl}/api/guilds/${guildId}/clan-mission-notification`
   );
   assert.equal(protectedSettings.status, 403);
@@ -1103,7 +1255,7 @@ test("OAuth callback rejects invalid state and guild APIs reject unauthorized se
     error: "You must have Manage Server permission for this Discord server.",
   });
 
-  const csrfAttempt = await originalFetch(`${baseUrl}/auth/logout`, {
+  const csrfAttempt = await request(`${baseUrl}/auth/logout`, {
     method: "POST",
     headers: { Origin: "https://attacker.example" },
   });
@@ -1111,7 +1263,7 @@ test("OAuth callback rejects invalid state and guild APIs reject unauthorized se
   assert.deepEqual(await csrfAttempt.json(), { error: "Cross-origin request rejected." });
 
   discordGuilds = [{ id: guildId, permissions: "32" }];
-  const resources = await originalFetch(`${baseUrl}/api/guilds/${guildId}/resources`);
+  const resources = await request(`${baseUrl}/api/guilds/${guildId}/resources`);
   assert.equal(resources.status, 200);
   assert.deepEqual(await resources.json(), {
     channels: [{ id: channelId, name: "clan-missions" }],
@@ -1121,7 +1273,7 @@ test("OAuth callback rejects invalid state and guild APIs reject unauthorized se
   botGuildFetch = async () => {
     throw Object.assign(new Error("temporary Discord failure"), { status: 503 });
   };
-  const discordFailure = await originalFetch(`${baseUrl}/api/guilds/${guildId}/resources`);
+  const discordFailure = await request(`${baseUrl}/api/guilds/${guildId}/resources`);
   assert.equal(discordFailure.status, 502);
   assert.deepEqual(await discordFailure.json(), {
     error: "The request could not be completed.",
@@ -1130,7 +1282,7 @@ test("OAuth callback rejects invalid state and guild APIs reject unauthorized se
   botGuildFetch = async () => {
     throw Object.assign(new Error("unknown guild"), { status: 404 });
   };
-  const botNotInGuild = await originalFetch(`${baseUrl}/api/guilds/${guildId}/resources`);
+  const botNotInGuild = await request(`${baseUrl}/api/guilds/${guildId}/resources`);
   assert.equal(botNotInGuild.status, 403);
   assert.deepEqual(await botNotInGuild.json(), {
     error: "The bot must be a member of this Discord server.",
@@ -1177,7 +1329,7 @@ test("OAuth callback rejects invalid state and guild APIs reject unauthorized se
   );
   assert.equal(invalidChannel.status, 400);
 
-  const logout = await originalFetch(`${baseUrl}/auth/logout`, {
+  const logout = await request(`${baseUrl}/auth/logout`, {
     method: "POST",
     headers: { Origin: "http://localhost" },
   });
@@ -1189,6 +1341,7 @@ test("OAuth callback rejects invalid state and guild APIs reject unauthorized se
     oauthState: "expected-callback-state",
     oauthLinkAccountId: String(googleAccountId),
     googleAuthenticated: true,
+    emailVerified: true,
     account: {
       id: String(googleAccountId),
       email: "google-user@example.com",
@@ -1218,7 +1371,7 @@ test("OAuth callback rejects invalid state and guild APIs reject unauthorized se
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   };
 
-  const successfulCallback = await originalFetch(
+  const successfulCallback = await request(
     `${baseUrl}/auth/discord/callback?state=expected-callback-state&code=test-authorization-code`,
     { redirect: "manual" }
   );
@@ -1242,22 +1395,469 @@ test("OAuth callback rejects invalid state and guild APIs reject unauthorized se
   })).insertedId;
   sessionState = {
     googleAuthenticated: true,
+    emailVerified: true,
     account: {
       id: String(secondGoogleAccountId),
       email: "second-google-user@example.com",
       displayName: "",
     },
   };
-  const secondLinkStart = await originalFetch(`${baseUrl}/auth/discord`, { redirect: "manual" });
+  const secondLinkStart = await request(`${baseUrl}/auth/discord?link=1`, { redirect: "manual" });
   assert.equal(secondLinkStart.status, 302);
   const secondLinkState = new URL(secondLinkStart.headers.get("location")).searchParams.get("state");
-  const duplicateDiscordLink = await originalFetch(
+  const duplicateDiscordLink = await request(
     `${baseUrl}/auth/discord/callback?state=${secondLinkState}&code=test-authorization-code`,
     { redirect: "manual" }
   );
   assert.equal(duplicateDiscordLink.status, 302);
   assert.equal(duplicateDiscordLink.headers.get("location"), "/?auth_error=discord_account_conflict");
   assert.equal(accountDocuments.get(String(secondGoogleAccountId)).discordId, undefined);
+});
+
+test("email registration, login, profile updates, and dashboard protection work end-to-end", async (t) => {
+  const keys = [
+    "CLIENT_ID",
+    "CLIENT_SECRET",
+    "DISCORD_OAUTH_REDIRECT_URI",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_OAUTH_REDIRECT_URI",
+    "GOOGLE_OAUTH_ENABLED",
+    "WEB_SESSION_SECRET",
+    "NODE_ENV",
+    "EMAIL_TEST_ADMIN_EMAILS",
+  ];
+  const saved = new Map(keys.map((key) => [key, process.env[key]]));
+  for (const key of keys) delete process.env[key];
+  process.env.WEB_SESSION_SECRET = "test-session-secret-with-at-least-32-characters";
+  process.env.NODE_ENV = "test";
+  process.env.EMAIL_TEST_ADMIN_EMAILS = " TACTIOPBOT@GMAIL.COM , admin@example.com ";
+  sessionState = {};
+  accountDocuments.clear();
+  const sentCodes = [];
+  const sentTestEmails = [];
+
+  const express = require("express");
+  const app = express();
+  app.set("trust proxy", 1);
+  app.use(createDiscordOAuthRouter({
+    client: {},
+    db: fakeDatabase,
+    verificationMailer: {
+      isConfigured: () => true,
+      sendCode: async (email, code, purpose) => sentCodes.push({ email, code, purpose }),
+      sendTestEmail: async (email) => sentTestEmails.push(email),
+    },
+  }));
+  app.get("/dashboard/private", (_req, res) => res.status(200).send("dashboard"));
+  app.get("/", (_req, res) => res.status(200).send("home"));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  const request = (url, options = {}) => fetch(`${baseUrl}${url}`, {
+    ...options,
+    headers: {
+      "X-Forwarded-For": "198.51.100.31",
+      ...(options.method ? { Origin: baseUrl } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const registration = await request("/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fullName: "  Test Operator  ",
+      clanName: "  Actual Clan  ",
+      email: "  Person@Example.com ",
+      password: "a-very-long-password",
+    }),
+  });
+  assert.equal(registration.status, 202);
+  assert.equal(accountDocuments.size, 0);
+  const registrationChallenge = sessionState.registrationChallenge;
+  assert.match(registrationChallenge.codeHash, /^[A-Za-z0-9_-]+$/);
+  assert.notEqual(registrationChallenge.codeHash, sentCodes.at(-1).code);
+  assert.ok(Math.abs(
+    registrationChallenge.expiresAt - registrationChallenge.sentAt - 10 * 60 * 1000
+  ) < 5);
+  const resendTooSoon = await request("/auth/register/resend", { method: "POST" });
+  assert.equal(resendTooSoon.status, 429);
+  assert.deepEqual(await (await request("/auth/pending")).json(), {
+    action: "register",
+    email: "person@example.com",
+  });
+  const registrationVerification = await request("/auth/register/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: sentCodes.at(-1).code }),
+  });
+  assert.equal(registrationVerification.status, 201);
+  assert.equal(sessionState.authenticated, true);
+  const account = Array.from(accountDocuments.values())[0];
+  assert.equal(account.email, "person@example.com");
+  assert.equal(account.emailVerified, true);
+  assert.equal(account.fullName, "Test Operator");
+  assert.equal(account.clanName, "Actual Clan");
+  assert.match(account.passwordHash, /^scrypt\$32768\$8\$1\$/);
+  assert.equal(account.passwordHash.includes("a-very-long-password"), false);
+  assert.equal(sessionState.emailVerified, true);
+
+  const duplicate = await request("/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fullName: "Another Person",
+      clanName: "Some Clan",
+      email: "person@example.com",
+      password: "another-long-password",
+    }),
+  });
+  assert.equal(duplicate.status, 409);
+
+  const updatedProfile = await request("/api/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fullName: "Updated Operator", clanName: "Updated Clan" }),
+  });
+  assert.equal(updatedProfile.status, 200);
+  const updatedProfileBody = await updatedProfile.json();
+  assert.equal(updatedProfileBody.account.fullName, "Updated Operator");
+  assert.equal(updatedProfileBody.account.clanName, "Updated Clan");
+  assert.equal(accountDocuments.get(String(account._id)).fullName, "Updated Operator");
+  assert.equal(accountDocuments.get(String(account._id)).clanName, "Updated Clan");
+  assert.equal((await request("/dashboard/private")).status, 200);
+  sessionState.emailVerified = false;
+  const unverifiedDashboard = await request("/dashboard/private", { redirect: "manual" });
+  assert.equal(unverifiedDashboard.status, 302);
+  assert.equal((await request("/api/clan-wars")).status, 401);
+  sessionState.emailVerified = true;
+
+  const emailCode = await request("/api/profile/email/code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "new-person@example.com" }),
+  });
+  assert.equal(emailCode.status, 202);
+  assert.equal(sentCodes.at(-1).email, "person@example.com");
+  assert.deepEqual(await (await request("/api/profile/pending")).json(), {
+    emailChange: { stage: "current-email", email: "new-person@example.com" },
+    passwordChange: false,
+  });
+  const currentEmailVerified = await request("/api/profile/email/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: sentCodes.at(-1).code }),
+  });
+  assert.equal(currentEmailVerified.status, 202);
+  assert.equal((await currentEmailVerified.json()).stage, "new-email");
+  assert.equal(sentCodes.at(-1).email, "new-person@example.com");
+  const newEmailVerified = await request("/api/profile/email/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: sentCodes.at(-1).code }),
+  });
+  assert.equal(newEmailVerified.status, 200);
+  assert.equal((await newEmailVerified.json()).account.email, "new-person@example.com");
+  assert.equal(accountDocuments.get(String(account._id)).normalizedEmail, "new-person@example.com");
+
+  const passwordCode = await request("/api/profile/password/code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: "a-different-long-password" }),
+  });
+  assert.equal(passwordCode.status, 202);
+  assert.equal(sentCodes.at(-1).email, "new-person@example.com");
+  assert.deepEqual(await (await request("/api/profile/pending")).json(), {
+    emailChange: null,
+    passwordChange: true,
+  });
+  const passwordVerified = await request("/api/profile/password/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: sentCodes.at(-1).code }),
+  });
+  assert.equal(passwordVerified.status, 200);
+
+  const logout = await request("/auth/logout", { method: "POST" });
+  assert.equal(logout.status, 204);
+  assert.equal(sessionState.account, undefined);
+  const signedOutDashboard = await request("/dashboard/private", { redirect: "manual" });
+  assert.equal(signedOutDashboard.status, 302);
+  assert.equal(signedOutDashboard.headers.get("location"), "/?auth_error=sign_in_required");
+
+  const invalidPassword = await request("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "new-person@example.com", password: "wrong-password" }),
+  });
+  assert.equal(invalidPassword.status, 401);
+  const login = await request("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: " NEW-PERSON@example.com ", password: "a-different-long-password" }),
+  });
+  assert.equal(login.status, 202);
+  const loginVerification = await request("/auth/login/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: sentCodes.at(-1).code }),
+  });
+  assert.equal(loginVerification.status, 200);
+  const currentUser = await request("/api/me");
+  assert.deepEqual((await currentUser.json()).account, {
+    id: String(account._id),
+    email: "new-person@example.com",
+    displayName: "Updated Operator",
+    fullName: "Updated Operator",
+    clanName: "Updated Clan",
+  });
+
+  const userEmail = sessionState.account.email;
+  sessionState.account.email = "tactiopbot@gmail.com";
+  const adminProviders = await request("/auth/providers");
+  assert.equal((await adminProviders.json()).emailTestAdmin, true);
+  const emailTest = await request("/api/admin/email/test", { method: "POST" });
+  assert.equal(emailTest.status, 200);
+  assert.deepEqual(await emailTest.json(), { sent: true });
+  assert.deepEqual(sentTestEmails, ["tactiopbot@gmail.com"]);
+
+  sessionState.account.email = userEmail;
+  const nonAdminProviders = await request("/auth/providers");
+  assert.equal((await nonAdminProviders.json()).emailTestAdmin, false);
+  const nonAdminEmailTest = await request("/api/admin/email/test", { method: "POST" });
+  assert.equal(nonAdminEmailTest.status, 403);
+  assert.deepEqual(sentTestEmails, ["tactiopbot@gmail.com"]);
+  assert.equal((await request("/auth/logout", { method: "POST" })).status, 204);
+});
+
+test("Discord OAuth signs users in, requires clan completion, and reuses linked identities", async (t) => {
+  const keys = [
+    "CLIENT_ID",
+    "CLIENT_SECRET",
+    "DISCORD_OAUTH_REDIRECT_URI",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_OAUTH_REDIRECT_URI",
+    "GOOGLE_OAUTH_ENABLED",
+    "WEB_SESSION_SECRET",
+    "NODE_ENV",
+  ];
+  const saved = new Map(keys.map((key) => [key, process.env[key]]));
+  process.env.CLIENT_ID = "test-discord-client";
+  process.env.CLIENT_SECRET = "test-discord-secret";
+  process.env.DISCORD_OAUTH_REDIRECT_URI = "http://localhost:3000/auth/discord/callback";
+  process.env.WEB_SESSION_SECRET = "test-session-secret-with-at-least-32-characters";
+  process.env.NODE_ENV = "test";
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
+  delete process.env.GOOGLE_OAUTH_REDIRECT_URI;
+  delete process.env.GOOGLE_OAUTH_ENABLED;
+  sessionState = {};
+  accountDocuments.clear();
+
+  const originalFetch = global.fetch;
+  const discordProfile = {
+    id: "67890123456789012",
+    username: "discord-user",
+    global_name: "Discord User",
+    email: "discord@example.com",
+    verified: true,
+  };
+  global.fetch = async (input, options) => {
+    const url = String(input);
+    if (url === "https://discord.com/api/v10/oauth2/token") {
+      const body = new URLSearchParams(options.body);
+      assert.equal(body.get("redirect_uri"), process.env.DISCORD_OAUTH_REDIRECT_URI);
+      return new Response(JSON.stringify({
+        access_token: "test-discord-access-token",
+        expires_in: 3600,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url === "https://discord.com/api/v10/users/@me") {
+      assert.ok(options.headers.Authorization.startsWith("Bearer "));
+      return new Response(JSON.stringify(discordProfile), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return originalFetch(input, options);
+  };
+
+  const express = require("express");
+  const app = express();
+  app.set("trust proxy", 1);
+  app.use(createDiscordOAuthRouter({ client: {}, db: fakeDatabase }));
+  app.get("/profile/complete", (_req, res) => res.status(200).send("complete-profile"));
+  app.get("/dashboard/private", (_req, res) => res.status(200).send("dashboard"));
+  app.get("/", (_req, res) => res.status(200).send("home"));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    global.fetch = originalFetch;
+    server.closeAllConnections();
+    await new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  const request = (url, options = {}) => originalFetch(`${baseUrl}${url}`, {
+    ...options,
+    headers: {
+      "X-Forwarded-For": "198.51.100.32",
+      ...(options.method ? { Origin: baseUrl } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const startLogin = await request("/auth/discord", { redirect: "manual" });
+  assert.equal(startLogin.status, 302);
+  const authorizationUrl = new URL(startLogin.headers.get("location"));
+  assert.equal(authorizationUrl.searchParams.get("scope"), "identify email guilds");
+  const callback = await request(
+    `/auth/discord/callback?state=${authorizationUrl.searchParams.get("state")}&code=test-code`,
+    { redirect: "manual" }
+  );
+  assert.equal(callback.status, 302);
+  assert.equal(callback.headers.get("location"), "/profile/complete");
+  assert.equal(accountDocuments.size, 1);
+  assert.equal(sessionState.account.email, "discord@example.com");
+  assert.equal(sessionState.account.clanName, undefined);
+  assert.equal(sessionState.user.id, discordProfile.id);
+  assert.equal(sessionState.oauth.refreshToken, null);
+  assert.equal((await request("/dashboard/private", { redirect: "manual" })).headers.get("location"), "/profile/complete");
+  assert.equal((await request("/profile/complete")).status, 200);
+
+  const profileUpdate = await request("/api/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clanName: "Their Clan" }),
+  });
+  assert.equal(profileUpdate.status, 200);
+  assert.equal((await request("/dashboard/private")).status, 200);
+  assert.equal((await request("/auth/logout", { method: "POST" })).status, 204);
+
+  const secondLogin = await request("/auth/discord", { redirect: "manual" });
+  const secondAuthorizationUrl = new URL(secondLogin.headers.get("location"));
+  const existingAccountLogin = await request(
+    `/auth/discord/callback?state=${secondAuthorizationUrl.searchParams.get("state")}&code=test-code`,
+    { redirect: "manual" }
+  );
+  assert.equal(existingAccountLogin.status, 302);
+  assert.equal(existingAccountLogin.headers.get("location"), "/");
+  assert.equal(accountDocuments.size, 1);
+});
+
+test("Clan War API validates saves, generates posters, and enforces owner isolation", async (t) => {
+  const keys = ["WEB_SESSION_SECRET", "NODE_ENV", "DISCORD_OAUTH_REDIRECT_URI", "GOOGLE_OAUTH_REDIRECT_URI"];
+  const saved = new Map(keys.map((key) => [key, process.env[key]]));
+  process.env.WEB_SESSION_SECRET = "test-session-secret-with-at-least-32-characters";
+  process.env.NODE_ENV = "test";
+  delete process.env.DISCORD_OAUTH_REDIRECT_URI;
+  delete process.env.GOOGLE_OAUTH_REDIRECT_URI;
+  const ownerId = new ObjectId().toHexString();
+  sessionState = {
+    googleAuthenticated: true,
+    emailVerified: true,
+    account: { id: ownerId, email: "owner@example.com", clanName: "Test Clan" },
+  };
+  clanWarDocuments.clear();
+
+  const express = require("express");
+  const app = express();
+  app.use(createDiscordOAuthRouter({ client: {}, db: fakeDatabase }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  const players = Array.from({ length: 10 }, (_, index) => ({
+    id: `player-${index + 1}`,
+    name: `Player ${index + 1}`,
+    rank: 1000 + index,
+    isLeader: index === 0 || index === 1,
+    team: index % 2 === 0 ? "A" : "B",
+  }));
+  const headers = {
+    "Content-Type": "application/json",
+    Origin: baseUrl,
+  };
+
+  sessionState = {};
+  const unauthorized = await fetch(`${baseUrl}/api/clan-wars`);
+  assert.equal(unauthorized.status, 401);
+  sessionState = {
+    googleAuthenticated: true,
+    emailVerified: true,
+    account: { id: ownerId, clanName: "Test Clan" },
+  };
+
+  const invalidSave = await fetch(`${baseUrl}/api/clan-wars`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ players, time: "16:00", timezone: "UTC+2" }),
+  });
+  assert.equal(invalidSave.status, 400);
+
+  const create = await fetch(`${baseUrl}/api/clan-wars`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ players, time: "16:00", timezone: "Europe/Berlin" }),
+  });
+  assert.equal(create.status, 201);
+  const { war } = await create.json();
+  assert.equal(war.teamATotal, 5020);
+  assert.equal(war.teamBTotal, 5025);
+  assert.equal(war.revision, 1);
+  assert.equal(war.ownerUserId, undefined);
+
+  const poster = await fetch(`${baseUrl}/api/clan-wars/${war.id}/poster.png`);
+  assert.equal(poster.status, 200);
+  assert.match(poster.headers.get("content-type"), /image\/png/);
+  assert.equal(Buffer.from(await poster.arrayBuffer()).subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+
+  const update = await fetch(`${baseUrl}/api/clan-wars/${war.id}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ players, time: "18:30", timezone: "Africa/Cairo", teamATotal: 0 }),
+  });
+  assert.equal(update.status, 200);
+  const updated = (await update.json()).war;
+  assert.equal(updated.time, "18:30");
+  assert.equal(updated.timezone, "Africa/Cairo");
+  assert.equal(updated.teamATotal, 5020);
+  assert.equal(updated.revision, 2);
+
+  sessionState = {
+    googleAuthenticated: true,
+    emailVerified: true,
+    account: { id: new ObjectId().toHexString(), clanName: "Other Clan" },
+  };
+  const otherOwner = await fetch(`${baseUrl}/api/clan-wars/${war.id}`);
+  assert.equal(otherOwner.status, 404);
 });
 
 test.after(() => {

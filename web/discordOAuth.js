@@ -1,4 +1,6 @@
 const crypto = require("crypto");
+const { promisify } = require("node:util");
+const path = require("node:path");
 const express = require("express");
 const session = require("express-session");
 const { OAuth2Client } = require("google-auth-library");
@@ -6,6 +8,10 @@ const { MongoStore } = require("connect-mongo");
 const { rateLimit } = require("express-rate-limit");
 const { ChannelType, PermissionsBitField } = require("discord.js");
 const { ObjectId } = require("mongodb");
+const { isMongoConnectivityError } = require("../webDb");
+const { createVerificationMailer } = require("./emailVerification");
+const { createSessionCryptoAdapter } = require("./sessionCrypto");
+const { createWebBotChatRouter } = require("./botChat");
 const {
   getGuildConfig,
   getNextReset,
@@ -13,10 +19,17 @@ const {
   deleteGuildConfig,
 } = require("../utils/clanMissionNotifier");
 const { languages } = require("../utils/cmNotificationLanguages");
+const {
+  balancePlayers,
+  createClanWarPoster,
+  validateClanWar,
+  validatePlayers,
+} = require("./clanWar");
 
 const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000;
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 const GUILD_MANAGEMENT_PERMISSIONS = 8n | 32n;
+const scryptAsync = promisify(crypto.scrypt);
 const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
@@ -30,6 +43,20 @@ const writeRateLimit = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: "Too many settings changes. Please try again later." },
+});
+const emailCodeRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 8,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many verification code requests. Please try again later." },
+});
+const emailTestRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 3,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many email tests. Please try again later." },
 });
 const apiRateLimit = rateLimit({
   windowMs: 60 * 1000,
@@ -91,6 +118,7 @@ function createDiscordOAuthRouter({
   discordClient,
   websiteOnly = false,
   googleRedirectUriOverride,
+  verificationMailer = createVerificationMailer(),
 }) {
   const router = express.Router();
   const redirectUri = process.env.DISCORD_OAUTH_REDIRECT_URI;
@@ -98,7 +126,6 @@ function createDiscordOAuthRouter({
   const isProduction = process.env.NODE_ENV === "production";
   const redirectOrigin = getRedirectOrigin(redirectUri, isProduction);
   const discordConfigurationIsValid =
-    !websiteOnly &&
     hasConfiguredValue(process.env.CLIENT_ID) &&
     hasConfiguredValue(process.env.CLIENT_SECRET) &&
     Boolean(redirectOrigin) &&
@@ -129,6 +156,15 @@ function createDiscordOAuthRouter({
     Boolean(db) &&
     typeof sessionSecret === "string" &&
     sessionSecret.length >= 32;
+  const verificationLifetimeMs = 10 * 60 * 1000;
+  const verificationResendDelayMs = 60 * 1000;
+  const verificationMaxAttempts = 5;
+  const emailTestAdminEmails = new Set(
+    (process.env.EMAIL_TEST_ADMIN_EMAILS || "")
+      .split(",")
+      .map(normalizeEmail)
+      .filter(Boolean)
+  );
   let accountIndexesPromise = null;
 
   if (!sessionConfigurationIsValid) {
@@ -149,6 +185,7 @@ function createDiscordOAuthRouter({
         collectionName: "web_sessions",
         ttl: SESSION_MAX_AGE_MS / 1000,
         autoRemove: "native",
+        cryptoAdapter: createSessionCryptoAdapter(sessionSecret),
       }),
       resave: false,
       saveUninitialized: false,
@@ -161,21 +198,140 @@ function createDiscordOAuthRouter({
       },
     })
   );
-
   router.use((req, res, next) => {
     res.set("Cache-Control", "no-store");
+    if (req.path === "/profile/complete") {
+      if (!isAuthenticated(req.session)) return res.redirect("/?auth_error=sign_in_required");
+      if (normalizeClanName(req.session.account?.clanName)) return res.redirect("/");
+    }
+    if (req.path.startsWith("/dashboard/")) {
+      if (!isAuthenticated(req.session)) return res.redirect("/?auth_error=sign_in_required");
+      if (!normalizeClanName(req.session.account?.clanName)) return res.redirect("/profile/complete");
+    }
     next();
   });
 
   router.use("/api", apiRateLimit);
   router.use("/auth", express.json({ limit: "8kb" }));
+  router.use(createWebBotChatRouter({
+    db,
+    publicDirectory: path.resolve(__dirname, "..", "public"),
+  }));
 
   router.get("/auth/providers", (req, res) => {
     res.json({
       discord: discordConfigurationIsValid,
       google: googleConfigurationIsValid,
+      discordServerManagement: !websiteOnly,
+      emailTestAdmin: isEmailTestAdmin(req.session),
     });
   });
+
+  router.get("/auth/pending", asyncRoute(async (req, res) => {
+    const login = req.session.loginChallenge;
+    const registration = req.session.registrationChallenge;
+    if (login?.expiresAt > Date.now()) {
+      return res.json({ action: "login", email: login.email });
+    }
+    if (registration?.expiresAt > Date.now()) {
+      return res.json({ action: "register", email: registration.email });
+    }
+    delete req.session.loginChallenge;
+    delete req.session.registrationChallenge;
+    await saveSession(req);
+    res.json({ action: null });
+  }));
+
+  function verificationCodeHash(challengeId, purpose, code) {
+    return crypto
+      .createHmac("sha256", sessionSecret)
+      .update(`${challengeId}:${purpose}:${code}`)
+      .digest();
+  }
+
+  function isEmailTestAdmin(sessionData) {
+    return (
+      isAuthenticated(sessionData) &&
+      emailTestAdminEmails.has(normalizeEmail(sessionData.account.email))
+    );
+  }
+
+  async function sendVerificationCode(req, key, purpose, email, metadata = {}) {
+    if (!verificationMailer.isConfigured()) {
+      throw httpError(
+        503,
+        "Email verification is not configured. Add SMTP settings to the server environment.",
+        "email_verification_not_configured"
+      );
+    }
+
+    const previous = req.session[key];
+    if (previous && Date.now() - previous.sentAt < verificationResendDelayMs) {
+      throw httpError(429, "Wait a minute before requesting another verification code.");
+    }
+
+    const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
+    const challengeId = crypto.randomBytes(16).toString("hex");
+    req.session[key] = {
+      purpose,
+      email,
+      challengeId,
+      codeHash: verificationCodeHash(challengeId, purpose, code).toString("base64url"),
+      attempts: 0,
+      sentAt: Date.now(),
+      expiresAt: Date.now() + verificationLifetimeMs,
+      ...metadata,
+    };
+    await saveSession(req);
+
+    try {
+      const emailPurpose = purpose === "email-login"
+        ? "sign-in"
+        : purpose === "email-registration" ? "registration" : "account-update";
+      await verificationMailer.sendCode(email, code, emailPurpose);
+    } catch (error) {
+      delete req.session[key];
+      await saveSession(req);
+      if (Number.isInteger(error.status)) {
+        throw error;
+      }
+      throw httpError(502, "Verification email could not be sent. Check the email server settings and try again.");
+    }
+  }
+
+  async function consumeVerificationCode(req, key, purpose, code) {
+    const challenge = req.session[key];
+    if (!challenge || challenge.purpose !== purpose) {
+      throw httpError(400, "Request a new verification code and try again.");
+    }
+    if (challenge.expiresAt <= Date.now()) {
+      delete req.session[key];
+      await saveSession(req);
+      throw httpError(400, "The verification code expired. Request a new one.");
+    }
+    if (typeof code !== "string" || !/^\d{6}$/.test(code)) {
+      throw httpError(400, "Enter the 6-digit verification code.");
+    }
+
+    challenge.attempts += 1;
+    const received = verificationCodeHash(challenge.challengeId, purpose, code);
+    const expected = Buffer.from(challenge.codeHash, "base64url");
+    const matches = expected.length === received.length && crypto.timingSafeEqual(expected, received);
+    if (!matches) {
+      if (challenge.attempts >= verificationMaxAttempts) delete req.session[key];
+      await saveSession(req);
+      throw httpError(
+        challenge.attempts >= verificationMaxAttempts ? 429 : 400,
+        challenge.attempts >= verificationMaxAttempts
+          ? "Too many incorrect codes. Request a new verification code."
+          : "That verification code is incorrect."
+      );
+    }
+
+    delete req.session[key];
+    await saveSession(req);
+    return challenge;
+  }
 
   async function ensureAccountIndexes() {
     if (!accountIndexesPromise) {
@@ -215,7 +371,16 @@ function createDiscordOAuthRouter({
     const normalizedEmail = normalizeEmail(profile.email);
     if (!normalizedEmail) throw httpError(401, "Google returned an invalid email address.");
     let account = await accounts.findOne({ googleId: String(profile.sub) });
-    if (account) return account;
+    if (account) {
+      if (account.emailVerified !== true) {
+        await accounts.updateOne(
+          { _id: account._id },
+          { $set: { emailVerified: true, updatedAt: new Date() } }
+        );
+        account.emailVerified = true;
+      }
+      return account;
+    }
 
     account = await accounts.findOne({ normalizedEmail });
     if (account) throw httpError(409, "An account with this email already exists. Sign in using its original method.");
@@ -224,7 +389,14 @@ function createDiscordOAuthRouter({
       const result = await accounts.insertOne({
         normalizedEmail,
         email: normalizedEmail,
+        emailVerified: true,
         googleId: String(profile.sub),
+        ...(typeof profile.name === "string" && profile.name.trim()
+          ? {
+            fullName: profile.name.trim().slice(0, 100),
+            displayName: profile.name.trim().slice(0, 100),
+          }
+          : {}),
         createdAt: new Date(),
       });
       return accounts.findOne({ _id: result.insertedId });
@@ -247,10 +419,6 @@ function createDiscordOAuthRouter({
     const objectId = new ObjectId(accountId);
     const account = await accounts.findOne({ _id: objectId });
     if (!account) throw httpError(401, "Your website account no longer exists.");
-    if (typeof account.googleId !== "string") {
-      throw httpError(401, "Sign in with Google before connecting Discord.");
-    }
-
     const existingLink = await accounts.findOne({ discordId });
     if (existingLink && String(existingLink._id) !== String(objectId)) {
       throw httpError(409, "This Discord account is already linked to another website account.");
@@ -278,6 +446,117 @@ function createDiscordOAuthRouter({
       }
       throw error;
     }
+  }
+
+  async function findOrCreateDiscordAccount(profile) {
+    await ensureAccountIndexes();
+    const accounts = db.collection("web_accounts");
+    if (profile.verified !== true) {
+      throw httpError(401, "Discord must provide a verified email address to sign in.");
+    }
+    let account = await accounts.findOne({ discordId: String(profile.id) });
+    if (account) {
+      if (account.emailVerified !== true) {
+        await accounts.updateOne(
+          { _id: account._id },
+          { $set: { emailVerified: true, updatedAt: new Date() } }
+        );
+        account.emailVerified = true;
+      }
+      return account;
+    }
+    const normalizedEmail = normalizeEmail(profile.email);
+    if (!normalizedEmail || profile.verified !== true) {
+      throw httpError(401, "Discord must provide a verified email address to create an account.");
+    }
+
+    if (await accounts.findOne({ normalizedEmail })) {
+      throw httpError(
+        409,
+        "An account with this email already exists. Sign in with the existing method and connect Discord explicitly.",
+        "discord_email_conflict"
+      );
+    }
+
+    const fullName = String(profile.global_name || profile.username || "").trim().slice(0, 100);
+    try {
+      const result = await accounts.insertOne({
+        normalizedEmail,
+        email: normalizedEmail,
+        emailVerified: true,
+        discordId: String(profile.id),
+        fullName,
+        displayName: fullName,
+        createdAt: new Date(),
+      });
+      return accounts.findOne({ _id: result.insertedId });
+    } catch (error) {
+      if (error?.code !== 11000) throw error;
+      account = await accounts.findOne({ discordId: String(profile.id) });
+      if (account) return account;
+      throw httpError(
+        409,
+        "An account with this email already exists. Sign in with the existing method and connect Discord explicitly.",
+        "discord_email_conflict"
+      );
+    }
+  }
+
+  async function hashPassword(password) {
+    const salt = crypto.randomBytes(16);
+    const derivedKey = await scryptAsync(password, salt, 64, {
+      N: 32_768,
+      r: 8,
+      p: 1,
+      maxmem: 64 * 1024 * 1024,
+    });
+    return `scrypt$32768$8$1$${salt.toString("base64url")}$${derivedKey.toString("base64url")}`;
+  }
+
+  async function verifyPassword(password, encodedHash) {
+    if (typeof encodedHash !== "string") return false;
+    const [algorithm, cost, blockSize, parallelization, encodedSalt, encodedKey, extra] = encodedHash.split("$");
+    if (
+      algorithm !== "scrypt" ||
+      cost !== "32768" ||
+      blockSize !== "8" ||
+      parallelization !== "1" ||
+      !encodedSalt ||
+      !encodedKey ||
+      extra !== undefined
+    ) return false;
+
+    let salt;
+    let expected;
+    try {
+      salt = Buffer.from(encodedSalt, "base64url");
+      expected = Buffer.from(encodedKey, "base64url");
+    } catch {
+      return false;
+    }
+    if (salt.length !== 16 || expected.length !== 64) return false;
+    const actual = await scryptAsync(password, salt, expected.length, {
+      N: 32_768,
+      r: 8,
+      p: 1,
+      maxmem: 64 * 1024 * 1024,
+    });
+    return crypto.timingSafeEqual(actual, expected);
+  }
+
+  async function establishDiscordSession(req, account, profile, tokenData) {
+    await establishAccountSession(req, account);
+    req.session.user = {
+      id: String(profile.id),
+      username: String(profile.username || ""),
+      globalName: profile.global_name ? String(profile.global_name) : null,
+    };
+    req.session.oauth = {
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token || null,
+      expiresAt: Date.now() + tokenData.expires_in * 1000,
+    };
+    await saveSession(req);
   }
 
   router.get("/auth/google", authRateLimit, asyncRoute(async (req, res) => {
@@ -318,8 +597,11 @@ function createDiscordOAuthRouter({
       await saveSession(req);
       throw httpError(400, "Invalid Google OAuth state.");
     }
+    if (req.query.error) {
+      await saveSession(req);
+      return res.redirect("/?auth_error=google_cancelled");
+    }
     if (
-      req.query.error ||
       typeof req.query.code !== "string" ||
       req.query.code.length === 0 ||
       req.query.code.length > 2048 ||
@@ -327,48 +609,229 @@ function createDiscordOAuthRouter({
       !codeVerifier
     ) {
       await saveSession(req);
-      throw httpError(400, "Google authorization was not completed.");
+      return res.redirect("/?auth_error=google_cancelled");
     }
 
-    const { tokens } = await googleOAuthClient.getToken({
-      code: req.query.code,
-      codeVerifier,
-    });
-    if (
-      typeof tokens.id_token !== "string" ||
-      tokens.id_token.length === 0 ||
-      tokens.id_token.length > 16_384
-    ) {
-      throw httpError(502, "Google returned an incomplete sign-in response.");
-    }
-    const ticket = await googleOAuthClient.verifyIdToken({
-      idToken: tokens.id_token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-    const profile = ticket.getPayload();
-    if (
-      typeof profile?.sub !== "string" ||
-      profile.sub.length === 0 ||
-      profile.sub.length > 255 ||
-      !profile.email ||
-      profile.email_verified !== true ||
-      profile.nonce !== expectedNonce
-    ) {
-      throw httpError(401, "Google could not verify this account.");
-    }
-
-    let account;
     try {
-      account = await findOrCreateGoogleAccount(profile);
+      const { tokens } = await googleOAuthClient.getToken({
+        code: req.query.code,
+        codeVerifier,
+      });
+      if (
+        typeof tokens.id_token !== "string" ||
+        tokens.id_token.length === 0 ||
+        tokens.id_token.length > 16_384
+      ) {
+        throw httpError(502, "Google returned an incomplete sign-in response.");
+      }
+      const ticket = await googleOAuthClient.verifyIdToken({
+        idToken: tokens.id_token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const profile = ticket.getPayload();
+      if (
+        typeof profile?.sub !== "string" ||
+        profile.sub.length === 0 ||
+        profile.sub.length > 255 ||
+        !profile.email ||
+        profile.email_verified !== true ||
+        profile.nonce !== expectedNonce
+      ) {
+        throw httpError(401, "Google could not verify this account.");
+      }
+
+      let account;
+      try {
+        account = await findOrCreateGoogleAccount(profile);
+      } catch (error) {
+        if (error.status === 409) {
+          return res.redirect("/?auth_error=google_account_conflict");
+        }
+        throw error;
+      }
+      await establishAccountSession(req, account);
+      res.redirect(account.clanName ? "/" : "/profile/complete");
     } catch (error) {
       if (error.status === 409) {
         return res.redirect("/?auth_error=google_account_conflict");
       }
-      throw error;
+      if (error.status === 401) {
+        return res.redirect("/?auth_error=google_unverified");
+      }
+      console.error(`[auth] Google callback failed (${error?.name || "Error"}): ${error?.message || "No details"}.`);
+      res.redirect("/?auth_error=google_failed");
     }
-    await establishAccountSession(req, account);
-    res.redirect("/");
   }));
+
+  router.post(
+    "/auth/register",
+    authRateLimit,
+    emailCodeRateLimit,
+    requireSameOrigin,
+    asyncRoute(async (req, res) => {
+      const { fullName, clanName, email, password } = req.body || {};
+      const normalizedEmail = normalizeEmail(email);
+      const normalizedFullName = normalizeFullName(fullName);
+      const normalizedClanName = normalizeClanName(clanName);
+      validatePassword(password);
+      if (!normalizedEmail) throw httpError(400, "Enter a valid email address.");
+      if (!normalizedFullName) throw httpError(400, "Full name must be between 2 and 100 characters.");
+      if (!normalizedClanName) throw httpError(400, "Clan name must be between 1 and 40 characters.");
+
+      await ensureAccountIndexes();
+      const accounts = db.collection("web_accounts");
+      if (await accounts.findOne({ normalizedEmail })) {
+        throw httpError(409, "An account with this email already exists. Sign in instead.");
+      }
+
+      if (!verificationMailer.isConfigured()) {
+        throw httpError(
+          503,
+          "Email verification is not configured. Add SMTP settings to the server environment.",
+          "email_verification_not_configured"
+        );
+      }
+      const passwordHash = await hashPassword(password);
+      await sendVerificationCode(req, "registrationChallenge", "email-registration", normalizedEmail, {
+        account: {
+          normalizedEmail,
+          email: normalizedEmail,
+          fullName: normalizedFullName,
+          displayName: normalizedFullName,
+          clanName: normalizedClanName,
+          passwordHash,
+        },
+      });
+      res.status(202).json({ verificationRequired: true, email: normalizedEmail });
+    })
+  );
+
+  router.post(
+    "/auth/register/verify",
+    authRateLimit,
+    requireSameOrigin,
+    asyncRoute(async (req, res) => {
+      const challenge = await consumeVerificationCode(
+        req,
+        "registrationChallenge",
+        "email-registration",
+        req.body?.code
+      );
+      const now = new Date();
+      const accountDocument = {
+        ...challenge.account,
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      let account;
+      try {
+        const result = await db.collection("web_accounts").insertOne(accountDocument);
+        account = await db.collection("web_accounts").findOne({ _id: result.insertedId });
+      } catch (error) {
+        if (error?.code === 11000) {
+          throw httpError(409, "An account with this email already exists. Sign in instead.");
+        }
+        throw error;
+      }
+      await establishAccountSession(req, account);
+      res.status(201).json({ account: toPublicAccount(account) });
+    })
+  );
+
+  router.post(
+    "/auth/register/resend",
+    authRateLimit,
+    emailCodeRateLimit,
+    requireSameOrigin,
+    asyncRoute(async (req, res) => {
+      const challenge = req.session.registrationChallenge;
+      if (!challenge || challenge.purpose !== "email-registration") {
+        throw httpError(400, "Start creating your account again to request a verification code.");
+      }
+      await sendVerificationCode(req, "registrationChallenge", "email-registration", challenge.email, {
+        account: challenge.account,
+      });
+      res.status(202).json({ verificationRequired: true, email: challenge.email });
+    })
+  );
+
+  router.post(
+    "/auth/login",
+    authRateLimit,
+    emailCodeRateLimit,
+    requireSameOrigin,
+    asyncRoute(async (req, res) => {
+      const normalizedEmail = normalizeEmail(req.body?.email);
+      const password = req.body?.password;
+      validatePassword(password);
+      if (!normalizedEmail) throw httpError(400, "Enter a valid email address.");
+      const account = await db.collection("web_accounts").findOne({ normalizedEmail });
+      if (!account || !(await verifyPassword(password, account.passwordHash))) {
+        throw httpError(401, "Email or password is incorrect.");
+      }
+
+      await sendVerificationCode(req, "loginChallenge", "email-login", normalizedEmail, {
+        accountId: String(account._id),
+      });
+      res.status(202).json({ verificationRequired: true, email: normalizedEmail });
+    })
+  );
+
+  router.post(
+    "/auth/login/verify",
+    authRateLimit,
+    requireSameOrigin,
+    asyncRoute(async (req, res) => {
+      const challenge = await consumeVerificationCode(
+        req,
+        "loginChallenge",
+        "email-login",
+        req.body?.code
+      );
+      if (!ObjectId.isValid(challenge.accountId)) {
+        throw httpError(401, "Your account session is invalid. Sign in again.");
+      }
+      const accounts = db.collection("web_accounts");
+      const result = await accounts.updateOne(
+        { _id: new ObjectId(challenge.accountId) },
+        { $set: { emailVerified: true, updatedAt: new Date() } }
+      );
+      if (result.matchedCount !== 1) throw httpError(401, "Your account no longer exists. Sign in again.");
+      const account = await accounts.findOne({ _id: new ObjectId(challenge.accountId) });
+      await establishAccountSession(req, account);
+      res.json({ account: toPublicAccount(account) });
+    })
+  );
+
+  router.post(
+    "/auth/login/resend",
+    authRateLimit,
+    emailCodeRateLimit,
+    requireSameOrigin,
+    asyncRoute(async (req, res) => {
+      const challenge = req.session.loginChallenge;
+      if (!challenge || challenge.purpose !== "email-login") {
+        throw httpError(400, "Sign in with your email and password to request a verification code.");
+      }
+      await sendVerificationCode(req, "loginChallenge", "email-login", challenge.email, {
+        accountId: challenge.accountId,
+      });
+      res.status(202).json({ verificationRequired: true, email: challenge.email });
+    })
+  );
+
+  router.post(
+    "/auth/verification/cancel",
+    authRateLimit,
+    requireSameOrigin,
+    asyncRoute(async (req, res) => {
+      delete req.session.loginChallenge;
+      delete req.session.registrationChallenge;
+      await saveSession(req);
+      res.status(204).end();
+    })
+  );
 
   router.get(
     "/auth/discord",
@@ -377,12 +840,14 @@ function createDiscordOAuthRouter({
       if (!discordConfigurationIsValid) {
         throw httpError(503, "Discord sign-in is not configured yet.");
       }
-      if (!req.session?.googleAuthenticated || !req.session?.account?.id) {
-        throw httpError(401, "Sign in with Google before connecting Discord.");
+      const linkAccount = req.query.link === "1";
+      if (linkAccount && !isAuthenticated(req.session)) {
+        throw httpError(401, "Sign in before connecting Discord.");
       }
       const state = crypto.randomBytes(32).toString("hex");
       req.session.oauthState = state;
-      req.session.oauthLinkAccountId = req.session.account.id;
+      req.session.oauthMode = linkAccount ? "link" : "login";
+      req.session.oauthLinkAccountId = linkAccount ? req.session.account.id : null;
       await saveSession(req);
 
       const authorizationUrl = new URL(`${DISCORD_API_BASE}/oauth2/authorize`);
@@ -390,7 +855,7 @@ function createDiscordOAuthRouter({
         client_id: process.env.CLIENT_ID,
         redirect_uri: redirectUri,
         response_type: "code",
-        scope: "identify guilds",
+        scope: "identify email guilds",
         state,
       }).toString();
 
@@ -408,21 +873,14 @@ function createDiscordOAuthRouter({
       const expectedState = req.session.oauthState;
       const receivedState = req.query.state;
       const linkAccountId = req.session.oauthLinkAccountId;
+      const oauthMode = req.session.oauthMode || (linkAccountId ? "link" : "login");
       delete req.session.oauthState;
+      delete req.session.oauthMode;
       delete req.session.oauthLinkAccountId;
 
       if (!matchesOAuthState(expectedState, receivedState)) {
         await saveSession(req);
         return res.status(400).json({ error: "Invalid OAuth state." });
-      }
-
-      if (
-        !req.session.googleAuthenticated ||
-        !req.session.account?.id ||
-        linkAccountId !== req.session.account.id
-      ) {
-        await saveSession(req);
-        throw httpError(401, "Sign in with Google before connecting Discord.");
       }
 
       if (req.query.error) {
@@ -432,6 +890,10 @@ function createDiscordOAuthRouter({
       if (typeof req.query.code !== "string" || req.query.code.length === 0 || req.query.code.length > 2048) {
         await saveSession(req);
         return res.redirect("/?auth_error=discord_cancelled");
+      }
+      if (oauthMode === "link" && (!isAuthenticated(req.session) || linkAccountId !== req.session.account?.id)) {
+        await saveSession(req);
+        return res.redirect("/?auth_error=sign_in_required");
       }
 
       const tokenResponse = await fetch(`${DISCORD_API_BASE}/oauth2/token`, {
@@ -461,40 +923,42 @@ function createDiscordOAuthRouter({
 
       const profile = await profileResponse.json();
       if (
-        !tokenData.access_token ||
-        !tokenData.refresh_token ||
+        typeof tokenData.access_token !== "string" ||
+        tokenData.access_token.length === 0 ||
         !Number.isFinite(tokenData.expires_in) ||
-        !isDiscordSnowflake(String(profile.id || ""))
+        tokenData.expires_in <= 0 ||
+        typeof profile.id !== "string" ||
+        !isDiscordSnowflake(profile.id)
       ) {
         throw httpError(502, "Discord returned an incomplete OAuth response.");
       }
+      if (profile.verified !== true) {
+        await saveSession(req);
+        return res.redirect("/?auth_error=discord_unverified_email");
+      }
 
-      let linkedAccount;
+      let account;
       try {
-        linkedAccount = await linkDiscordAccount(linkAccountId, String(profile.id));
+        account = oauthMode === "link"
+          ? await linkDiscordAccount(linkAccountId, profile.id)
+          : await findOrCreateDiscordAccount(profile);
       } catch (error) {
         if (error.status === 409) {
           await saveSession(req);
-          return res.redirect("/?auth_error=discord_account_conflict");
+          const conflict = error.code === "discord_email_conflict"
+            ? "discord_email_conflict"
+            : "discord_account_conflict";
+          return res.redirect(`/?auth_error=${conflict}`);
+        }
+        if (error.status === 401) {
+          await saveSession(req);
+          return res.redirect("/?auth_error=discord_unverified_email");
         }
         throw error;
       }
 
-      await regenerateSession(req);
-      req.session.googleAuthenticated = true;
-      req.session.account = toPublicAccount(linkedAccount);
-      req.session.user = {
-        id: String(profile.id),
-        username: String(profile.username || ""),
-        globalName: profile.global_name ? String(profile.global_name) : null,
-      };
-      req.session.oauth = {
-        accessToken: tokenData.access_token,
-        refreshToken: tokenData.refresh_token,
-        expiresAt: Date.now() + tokenData.expires_in * 1000,
-      };
-      await saveSession(req);
-      res.redirect("/");
+      await establishDiscordSession(req, account, profile, tokenData);
+      res.redirect(account.clanName ? "/" : "/profile/complete");
     })
   );
 
@@ -512,17 +976,442 @@ function createDiscordOAuthRouter({
 
   router.use("/api", express.json({ limit: "8kb" }));
 
+  const clanWars = db.collection("web_clan_wars");
+  let clanWarIndexesPromise = null;
+  const ensureClanWarIndexes = () => {
+    if (!clanWarIndexesPromise) {
+      clanWarIndexesPromise = clanWars.createIndex(
+        { ownerUserId: 1, updatedAt: -1 },
+        { name: "web_clan_wars_owner_updated" }
+      ).catch((error) => {
+        clanWarIndexesPromise = null;
+        throw error;
+      });
+    }
+    return clanWarIndexesPromise;
+  };
+  const toPublicClanWar = (record) => {
+    if (!record) return null;
+    const { _id, ownerUserId, ...data } = record;
+    return { ...data, id: String(_id) };
+  };
+  const requireWebsiteAccount = (req, res, next) => {
+    if (!isAuthenticated(req.session)) {
+      return res.status(401).json({ error: "Sign in to manage your Clan Wars." });
+    }
+    if (!normalizeClanName(req.session.account.clanName)) {
+      return res.status(403).json({ error: "Complete your TACTIOPBOT profile before continuing." });
+    }
+    next();
+  };
+  const requireSignedInAccount = (req, res, next) => {
+    if (!isAuthenticated(req.session)) {
+      return res.status(401).json({ error: "Sign in to update your profile." });
+    }
+    next();
+  };
+
+  router.post(
+    "/api/admin/email/test",
+    requireSignedInAccount,
+    requireSameOrigin,
+    emailTestRateLimit,
+    asyncRoute(async (req, res) => {
+      if (!isEmailTestAdmin(req.session)) {
+        throw httpError(403, "This account is not authorized to send email tests.");
+      }
+      await verificationMailer.sendTestEmail(normalizeEmail(req.session.account.email));
+      res.json({ sent: true });
+    })
+  );
+
+  router.post(
+    "/api/clan-wars/balance",
+    requireWebsiteAccount,
+    requireSameOrigin,
+    writeRateLimit,
+    (req, res, next) => {
+      try {
+        if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+          throw httpError(400, "A player list is required.");
+        }
+        const players = validatePlayers(req.body.players, { requireTeams: false });
+        res.json({ players: balancePlayers(players) });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  router.get(
+    "/api/clan-wars",
+    requireWebsiteAccount,
+    asyncRoute(async (req, res) => {
+      await ensureClanWarIndexes();
+      const records = await clanWars
+        .find({ ownerUserId: req.session.account.id })
+        .sort({ updatedAt: -1 })
+        .limit(50)
+        .toArray();
+      res.json({ wars: records.map(toPublicClanWar) });
+    })
+  );
+
+  router.post(
+    "/api/clan-wars",
+    requireWebsiteAccount,
+    requireSameOrigin,
+    writeRateLimit,
+    asyncRoute(async (req, res) => {
+      const data = validateClanWar(req.body);
+      const now = new Date();
+      const record = {
+        _id: new ObjectId(),
+        ownerUserId: req.session.account.id,
+        ...data,
+        revision: 1,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await clanWars.insertOne(record);
+      res.status(201).json({ war: toPublicClanWar(record) });
+    })
+  );
+
+  router.get(
+    "/api/clan-wars/:warId/poster.png",
+    requireWebsiteAccount,
+    asyncRoute(async (req, res) => {
+      if (!ObjectId.isValid(req.params.warId)) {
+        throw httpError(400, "The Clan War ID is invalid.");
+      }
+      const record = await clanWars.findOne({
+        _id: new ObjectId(req.params.warId),
+        ownerUserId: req.session.account.id,
+      });
+      if (!record) throw httpError(404, "Clan War not found.");
+      const image = createClanWarPoster(record);
+      res.type("png");
+      res.set("Content-Disposition", 'inline; filename="clan-war.png"');
+      res.send(image);
+    })
+  );
+
+  router.get(
+    "/api/clan-wars/:warId",
+    requireWebsiteAccount,
+    asyncRoute(async (req, res) => {
+      if (!ObjectId.isValid(req.params.warId)) {
+        throw httpError(400, "The Clan War ID is invalid.");
+      }
+      const record = await clanWars.findOne({
+        _id: new ObjectId(req.params.warId),
+        ownerUserId: req.session.account.id,
+      });
+      if (!record) throw httpError(404, "Clan War not found.");
+      res.json({ war: toPublicClanWar(record) });
+    })
+  );
+
+  router.put(
+    "/api/clan-wars/:warId",
+    requireWebsiteAccount,
+    requireSameOrigin,
+    writeRateLimit,
+    asyncRoute(async (req, res) => {
+      if (!ObjectId.isValid(req.params.warId)) {
+        throw httpError(400, "The Clan War ID is invalid.");
+      }
+      const data = validateClanWar(req.body);
+      const now = new Date();
+      const result = await clanWars.findOneAndUpdate(
+        {
+          _id: new ObjectId(req.params.warId),
+          ownerUserId: req.session.account.id,
+        },
+        {
+          $set: { ...data, updatedAt: now },
+          $inc: { revision: 1 },
+        },
+        { returnDocument: "after" }
+      );
+      if (!result) throw httpError(404, "Clan War not found.");
+      res.json({ war: toPublicClanWar(result) });
+    })
+  );
+
   router.get("/api/me", (req, res) => {
-    const googleAuthenticated =
-      req.session?.googleAuthenticated === true && Boolean(req.session?.account?.id);
+    const authenticated = isAuthenticated(req.session);
     res.json({
-      user: googleAuthenticated && req.session?.oauth?.accessToken ? req.session.user || null : null,
-      account: googleAuthenticated ? req.session.account : null,
+      user: authenticated && req.session?.oauth?.accessToken ? req.session.user || null : null,
+      account: authenticated ? req.session.account : null,
     });
   });
 
+  router.get(
+    "/api/profile/pending",
+    requireSignedInAccount,
+    asyncRoute(async (req, res) => {
+      const emailChange = req.session.profileEmailChallenge;
+      const passwordChange = req.session.profilePasswordChallenge;
+      const pendingEmailChange = emailChange?.expiresAt > Date.now()
+        ? {
+          stage: emailChange.purpose === "profile-email-current" ? "current-email" : "new-email",
+          email: emailChange.newEmail,
+        }
+        : null;
+      const pendingPasswordChange = passwordChange?.expiresAt > Date.now();
+      if (!pendingEmailChange && emailChange) delete req.session.profileEmailChallenge;
+      if (!pendingPasswordChange && passwordChange) delete req.session.profilePasswordChallenge;
+      if ((!pendingEmailChange && emailChange) || (!pendingPasswordChange && passwordChange)) {
+        await saveSession(req);
+      }
+      res.json({
+        emailChange: pendingEmailChange,
+        passwordChange: pendingPasswordChange,
+      });
+    })
+  );
+
+  router.put(
+    "/api/profile",
+    requireSignedInAccount,
+    requireSameOrigin,
+    writeRateLimit,
+    asyncRoute(async (req, res) => {
+      if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+        throw httpError(400, "A profile update is required.");
+      }
+      const fields = Object.keys(req.body);
+      if (!fields.length || fields.some((key) => !["fullName", "clanName", "timezone"].includes(key))) {
+        throw httpError(400, "Only your name, clan name, and timezone can be changed here.");
+      }
+      const updates = { updatedAt: new Date() };
+      if (Object.hasOwn(req.body, "fullName")) {
+        const fullName = normalizeFullName(req.body.fullName);
+        if (!fullName) throw httpError(400, "Full name must be between 2 and 100 characters.");
+        updates.fullName = fullName;
+        updates.displayName = fullName;
+      }
+      if (Object.hasOwn(req.body, "clanName")) {
+        const clanName = normalizeClanName(req.body.clanName);
+        if (!clanName) throw httpError(400, "Clan name must be between 1 and 40 characters.");
+        updates.clanName = clanName;
+      }
+      if (Object.hasOwn(req.body, "timezone")) {
+        const timezone = req.body.timezone;
+        if (timezone === null || timezone === "" || timezone === "auto") {
+          updates.timezone = null;
+        } else if (typeof timezone === "string" && isValidTimezone(timezone)) {
+          updates.timezone = timezone;
+        } else {
+          throw httpError(400, "Invalid timezone identifier.");
+        }
+      }
+      const accountId = req.session.account.id;
+      if (!ObjectId.isValid(accountId)) throw httpError(401, "Your account session is invalid. Sign in again.");
+      const accounts = db.collection("web_accounts");
+      const result = await accounts.updateOne(
+        { _id: new ObjectId(accountId) },
+        { $set: updates }
+      );
+      if (result.matchedCount !== 1) throw httpError(401, "Your account no longer exists. Sign in again.");
+      if (updates.fullName) {
+        req.session.account.fullName = updates.fullName;
+        req.session.account.displayName = updates.fullName;
+      }
+      if (updates.clanName) req.session.account.clanName = updates.clanName;
+      if (Object.hasOwn(updates, "timezone")) req.session.account.timezone = updates.timezone;
+      await saveSession(req);
+      res.json({ account: req.session.account });
+    })
+  );
+
+  router.post(
+    "/api/profile/email/code",
+    requireSignedInAccount,
+    requireSameOrigin,
+    emailCodeRateLimit,
+    asyncRoute(async (req, res) => {
+      const newEmail = normalizeEmail(req.body?.email);
+      if (!newEmail) throw httpError(400, "Enter a valid new email address.");
+      const currentEmail = normalizeEmail(req.session.account.email);
+      if (!currentEmail) throw httpError(400, "This account does not have a verified email address.");
+      if (newEmail === currentEmail) throw httpError(400, "Enter an email address different from your current one.");
+      if (await db.collection("web_accounts").findOne({ normalizedEmail: newEmail })) {
+        throw httpError(409, "An account with this email already exists.");
+      }
+
+      await sendVerificationCode(
+        req,
+        "profileEmailChallenge",
+        "profile-email-current",
+        currentEmail,
+        { newEmail }
+      );
+      res.status(202).json({ verificationRequired: true, stage: "current-email" });
+    })
+  );
+
+  router.post(
+    "/api/profile/email/resend",
+    requireSignedInAccount,
+    requireSameOrigin,
+    emailCodeRateLimit,
+    asyncRoute(async (req, res) => {
+      const challenge = req.session.profileEmailChallenge;
+      if (!challenge || !challenge.purpose.startsWith("profile-email-")) {
+        throw httpError(400, "Start an email change to request a verification code.");
+      }
+      await sendVerificationCode(
+        req,
+        "profileEmailChallenge",
+        challenge.purpose,
+        challenge.email,
+        { newEmail: challenge.newEmail }
+      );
+      res.status(202).json({ verificationRequired: true, stage: challenge.purpose });
+    })
+  );
+
+  router.post(
+    "/api/profile/email/verify",
+    requireSignedInAccount,
+    requireSameOrigin,
+    writeRateLimit,
+    asyncRoute(async (req, res) => {
+      const challenge = req.session.profileEmailChallenge;
+      if (!challenge || !challenge.purpose.startsWith("profile-email-")) {
+        throw httpError(400, "Start an email change to request a verification code.");
+      }
+      const purpose = challenge.purpose;
+      const verified = await consumeVerificationCode(
+        req,
+        "profileEmailChallenge",
+        purpose,
+        req.body?.code
+      );
+      if (purpose === "profile-email-current") {
+        await sendVerificationCode(
+          req,
+          "profileEmailChallenge",
+          "profile-email-new",
+          verified.newEmail,
+          { newEmail: verified.newEmail }
+        );
+        res.status(202).json({ verificationRequired: true, stage: "new-email" });
+        return;
+      }
+
+      const accountId = req.session.account.id;
+      if (!ObjectId.isValid(accountId)) throw httpError(401, "Your account session is invalid. Sign in again.");
+      try {
+        const result = await db.collection("web_accounts").updateOne(
+          { _id: new ObjectId(accountId) },
+          {
+            $set: {
+              email: verified.newEmail,
+              normalizedEmail: verified.newEmail,
+              emailVerified: true,
+              updatedAt: new Date(),
+            },
+          }
+        );
+        if (result.matchedCount !== 1) throw httpError(401, "Your account no longer exists. Sign in again.");
+      } catch (error) {
+        if (error?.code === 11000) throw httpError(409, "An account with this email already exists.");
+        throw error;
+      }
+      req.session.account.email = verified.newEmail;
+      await saveSession(req);
+      res.json({ account: req.session.account });
+    })
+  );
+
+  router.post(
+    "/api/profile/password/code",
+    requireSignedInAccount,
+    requireSameOrigin,
+    emailCodeRateLimit,
+    asyncRoute(async (req, res) => {
+      const newPassword = req.body?.password;
+      validatePassword(newPassword);
+      const email = normalizeEmail(req.session.account.email);
+      if (!email) throw httpError(400, "This account does not have an email address for verification.");
+      if (!verificationMailer.isConfigured()) {
+        throw httpError(
+          503,
+          "Email verification is not configured. Add SMTP settings to the server environment.",
+          "email_verification_not_configured"
+        );
+      }
+      const passwordHash = await hashPassword(newPassword);
+      await sendVerificationCode(
+        req,
+        "profilePasswordChallenge",
+        "profile-password",
+        email,
+        { passwordHash }
+      );
+      res.status(202).json({ verificationRequired: true });
+    })
+  );
+
+  router.post(
+    "/api/profile/password/resend",
+    requireSignedInAccount,
+    requireSameOrigin,
+    emailCodeRateLimit,
+    asyncRoute(async (req, res) => {
+      const challenge = req.session.profilePasswordChallenge;
+      if (!challenge || challenge.purpose !== "profile-password") {
+        throw httpError(400, "Start a password change to request a verification code.");
+      }
+      await sendVerificationCode(
+        req,
+        "profilePasswordChallenge",
+        "profile-password",
+        challenge.email,
+        { passwordHash: challenge.passwordHash }
+      );
+      res.status(202).json({ verificationRequired: true });
+    })
+  );
+
+  router.post(
+    "/api/profile/password/verify",
+    requireSignedInAccount,
+    requireSameOrigin,
+    writeRateLimit,
+    asyncRoute(async (req, res) => {
+      const challenge = await consumeVerificationCode(
+        req,
+        "profilePasswordChallenge",
+        "profile-password",
+        req.body?.code
+      );
+      const accountId = req.session.account.id;
+      if (!ObjectId.isValid(accountId)) throw httpError(401, "Your account session is invalid. Sign in again.");
+      const result = await db.collection("web_accounts").updateOne(
+        { _id: new ObjectId(accountId) },
+        { $set: { passwordHash: challenge.passwordHash, updatedAt: new Date() } }
+      );
+      if (result.matchedCount !== 1) throw httpError(401, "Your account no longer exists. Sign in again.");
+      res.json({ updated: true });
+    })
+  );
+
   router.get("/api/languages", (req, res) => {
     res.json({ languages: Object.keys(languages) });
+  });
+
+  router.get("/api/mission-reset", (req, res) => {
+    const nextReset = getNextReset();
+    const userTimezone = req.session?.account?.timezone || null;
+    res.json({
+      nextReset: nextReset.toISOString(),
+      timezone: userTimezone || "auto",
+    });
   });
 
   if (websiteOnly) {
@@ -666,13 +1555,22 @@ function createDiscordOAuthRouter({
 
   router.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
-    const status = Number.isInteger(error.status) ? error.status : 500;
+    const databaseUnavailable = isMongoConnectivityError(error);
+    const status = databaseUnavailable ? 503 : Number.isInteger(error.status) ? error.status : 500;
     if (status >= 500) {
-      console.error(`[web-api] Request failed (${error?.name || "Error"}).`);
+      console.error(
+        databaseUnavailable
+          ? `[web-api] Database is temporarily unavailable (${error?.name || "Error"}).`
+          : `[web-api] Request failed (${error?.name || "Error"}): ${error?.message || "No details"}.`
+      );
     }
     const message = ["entity.parse.failed", "entity.too.large"].includes(error.type)
       ? "The request body is invalid or too large."
-      : status >= 500 ? "The request could not be completed." : error.message;
+      : error.code === "email_verification_not_configured"
+        ? "Email sign-in needs SMTP email settings on the server. Configure SMTP_HOST, SMTP_USER, SMTP_PASS and EMAIL_FROM, or use Google/Discord sign-in."
+        : databaseUnavailable
+          ? "Website database service is temporarily unavailable."
+          : status >= 500 ? "The request could not be completed." : error.message;
     const payload = { error: message };
     if (error.code) payload.code = error.code;
     res.status(status).json(payload);
@@ -683,7 +1581,9 @@ function createDiscordOAuthRouter({
     if (!oauth) return null;
     if (oauth.expiresAt > Date.now() + 60_000) return oauth.accessToken;
 
-    if (!oauth.refreshToken) return null;
+    if (!oauth.refreshToken) {
+      throw httpError(401, "Discord authorization expired. Reconnect Discord to continue.");
+    }
     const response = await fetch(`${DISCORD_API_BASE}/oauth2/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -695,10 +1595,17 @@ function createDiscordOAuthRouter({
       }),
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      throw httpError(502, "Discord authorization could not be refreshed. Reconnect Discord to continue.");
+    }
     const tokenData = await response.json();
-    if (!tokenData.access_token || !tokenData.refresh_token || !Number.isFinite(tokenData.expires_in)) {
-      return null;
+    if (
+      typeof tokenData.access_token !== "string" ||
+      typeof tokenData.refresh_token !== "string" ||
+      !Number.isFinite(tokenData.expires_in) ||
+      tokenData.expires_in <= 0
+    ) {
+      throw httpError(502, "Discord returned an incomplete token refresh response.");
     }
 
     req.session.oauth = {
@@ -767,8 +1674,8 @@ function createDiscordOAuthRouter({
 
 function requireDiscordConnected(req, res, next) {
   if (
-    !req.session?.googleAuthenticated ||
-    !req.session?.account?.id ||
+    !isAuthenticated(req.session) ||
+    !normalizeClanName(req.session?.account?.clanName) ||
     !req.session?.user ||
     !req.session?.oauth?.accessToken
   ) {
@@ -792,6 +1699,47 @@ function normalizeEmail(email) {
   return normalizedEmail;
 }
 
+function normalizeFullName(fullName) {
+  if (typeof fullName !== "string") return "";
+  const normalized = fullName.trim();
+  const length = Array.from(normalized).length;
+  return length >= 2 && length <= 100 && !/[\u0000-\u001f\u007f]/.test(normalized)
+    ? normalized
+    : "";
+}
+
+function normalizeClanName(clanName) {
+  if (typeof clanName !== "string") return "";
+  const normalized = clanName.trim();
+  const length = Array.from(normalized).length;
+  return length >= 1 && length <= 40 && !/[\u0000-\u001f\u007f]/.test(normalized)
+    ? normalized
+    : "";
+}
+
+function isValidTimezone(timezone) {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function validatePassword(password) {
+  if (typeof password !== "string" || password.length < 12 || password.length > 128) {
+    throw httpError(400, "Password must be between 12 and 128 characters.");
+  }
+}
+
+function isAuthenticated(sessionData) {
+  return Boolean(
+    sessionData?.account?.id &&
+    sessionData.emailVerified === true &&
+    (sessionData.authenticated === true || sessionData.googleAuthenticated === true)
+  );
+}
+
 function hasConfiguredValue(value) {
   return typeof value === "string" && value.length > 0 && value.trim() === value;
 }
@@ -799,14 +1747,21 @@ function hasConfiguredValue(value) {
 function toPublicAccount(account) {
   return {
     id: String(account._id),
-    email: account.email,
-    displayName: account.displayName || "",
+    email: account.email || "",
+    displayName: account.displayName || account.fullName || "",
+    ...(account.fullName || account.displayName
+      ? { fullName: account.fullName || account.displayName }
+      : {}),
+    ...(account.clanName ? { clanName: account.clanName } : {}),
+    ...(account.timezone ? { timezone: account.timezone } : {}),
   };
 }
 
 function establishAccountSession(req, account) {
   return regenerateSession(req).then(() => {
+    req.session.authenticated = true;
     req.session.googleAuthenticated = true;
+    req.session.emailVerified = account.emailVerified === true;
     req.session.account = toPublicAccount(account);
     return saveSession(req);
   });

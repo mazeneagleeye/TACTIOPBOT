@@ -1,0 +1,235 @@
+{
+  "assets": [
+    {
+      "path": "images/logos/tacticool.png.jpeg",
+      "type": "logo",
+      "dimensions": "512x512",
+      "intendedUse": "Circular Tacticool avatar beside its wordmark on the landing page.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "images/logos/tactiopbot.png.jpeg",
+      "type": "logo",
+      "dimensions": "1254x1254",
+      "intendedUse": "Circular bot avatar beside the typed TACTIOPBOT name in the site navigation and landing page.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "images/logos/tacticool-black.png.jpeg",
+      "type": "logo",
+      "dimensions": "261x99",
+      "intendedUse": "TACTICOOL wordmark on the landing page.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "images/logos/tactiopbot-logo.png.jpeg",
+      "type": "logo",
+      "dimensions": "748x307",
+      "intendedUse": "Original TACTIOPBOT wordmark artwork.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "images/logos/tacticool-wordmark.png",
+      "type": "logo",
+      "dimensions": "227x65",
+      "intendedUse": "TACTICOOL wordmark on the landing page, without the surrounding frame.",
+      "source": "Edited from the user-provided tacticool-black.png.jpeg to remove its border."
+    },
+    {
+      "path": "images/logos/tactiopbot-wordmark.png",
+      "type": "logo",
+      "dimensions": "644x125",
+      "intendedUse": "TACTIOPBOT wordmark on the landing page and in footers, without the tagline or surrounding frame.",
+      "source": "Edited from the user-provided tactiopbot-logo.png.jpeg to remove its tagline and border."
+    },
+    {
+      "path": "images/operators/jp.png.jpeg",
+      "type": "operator",
+      "dimensions": "1051x1496",
+      "intendedUse": "JP welcome artwork on the signed-in dashboard.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "images/operators/jp-cutout.png",
+      "type": "operator",
+      "dimensions": "1051x1496",
+      "intendedUse": "Transparent JP welcome artwork on the signed-in dashboard.",
+      "source": "Processed from the user-provided jp.png.jpeg to remove its checkerboard background."
+    },
+    {
+      "path": "images/backgrounds/WhatsApp Image 2026-11-02 at 8.33.51 PM.jpeg",
+      "type": "wallpaper",
+      "dimensions": "588x330",
+      "intendedUse": "First image in the slow landing-page wallpaper crossfade.",
+      "source": "User-provided; origin and public-use permission are unverified."
+    },
+    {
+      "path": "images/backgrounds/WhatsApp Image 2026-11-02 at 8.33.51 PM (1).jpeg",
+      "type": "wallpaper",
+      "dimensions": "588x330",
+      "intendedUse": "Landing-page wallpaper crossfade.",
+      "source": "User-provided; origin and public-use permission are unverified."
+    },
+    {
+      "path": "images/backgrounds/WhatsApp Image 2026-11-02 at 8.33.51 PM (2).jpeg",
+      "type": "wallpaper",
+      "dimensions": "739x415",
+      "intendedUse": "Landing-page wallpaper crossfade and dashboard welcome background.",
+      "source": "User-provided; origin and public-use permission are unverified."
+    },
+    {
+      "path": "images/backgrounds/WhatsApp Image 2026-11-02 at 8.33.51 PM (3).jpeg",
+      "type": "wallpaper",
+      "dimensions": "526x295",
+      "intendedUse": "Landing-page wallpaper crossfade.",
+      "source": "User-provided; origin and public-use permission are unverified."
+    },
+    {
+      "path": "images/backgrounds/WhatsApp Image 2026-11-02 at 8.33.51 PM (4).jpeg",
+      "type": "wallpaper",
+      "dimensions": "739x415",
+      "intendedUse": "Landing-page wallpaper crossfade.",
+      "source": "User-provided; origin and public-use permission are unverified."
+    },
+    {
+      "path": "images/backgrounds/WhatsApp Image 2026-11-02 at 8.33.51 PM (5).jpeg",
+      "type": "wallpaper",
+      "dimensions": "965x542",
+      "intendedUse": "Landing-video poster fallback.",
+      "source": "User-provided; origin and public-use permission are unverified."
+    },
+    {
+      "path": "images/dashboard/bot-chat.png.jpeg",
+      "type": "dashboard-art",
+      "dimensions": "1600x900",
+      "intendedUse": "Bot Chat dashboard card.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "images/dashboard/video-announcements.png.jpeg",
+      "type": "dashboard-art",
+      "dimensions": "1600x900",
+      "intendedUse": "Video Announcements dashboard card and server-operations section.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "images/dashboard/search-for-id.png.jpeg",
+      "type": "dashboard-art",
+      "dimensions": "1600x900",
+      "intendedUse": "Coming Soon Search for ID dashboard card; no search service is implemented.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "images/dashboard/clan-war-manager.png.jpeg",
+      "type": "dashboard-art",
+      "dimensions": "1600x900",
+      "intendedUse": "Clan War Manager dashboard card.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "images/maps/factory-png.jpeg",
+      "type": "map",
+      "dimensions": "1600x900",
+      "intendedUse": "Factory map feature section.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "images/maps/frontier.png.jpeg",
+      "type": "map",
+      "dimensions": "1600x900",
+      "intendedUse": "Frontier map feature section.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "images/maps/uchebnaya-station.png.jpeg",
+      "type": "map",
+      "dimensions": "1600x900",
+      "intendedUse": "Available map art for future use.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "images/maps/village.png.jpeg",
+      "type": "map",
+      "dimensions": "400x400",
+      "intendedUse": "Village map feature section.",
+      "source": "User-provided; original source and public-use permission are unverified."
+    },
+    {
+      "path": "videos/landing-background.mp4",
+      "type": "gameplay-video",
+      "dimensions": null,
+      "intendedUse": "Muted desktop landing-page background; poster remains available on constrained or reduced-motion devices.",
+      "source": "User-provided; source and public-use permission are unverified."
+    },
+    {
+      "path": "videos/gameplay-01.mp4",
+      "type": "gameplay-video",
+      "dimensions": null,
+      "intendedUse": "Muted closing-page background; not loaded on constrained or reduced-motion devices.",
+      "source": "User-provided; source and public-use permission are unverified."
+    },
+    {
+      "path": "music/music1.mp4",
+      "type": "audio-video-container",
+      "dimensions": null,
+      "intendedUse": "Music candidate; playback withheld until source and public-use rights are confirmed.",
+      "source": "User-provided; audio codec, track title, duration, and public-use permission are unverified."
+    },
+    {
+      "path": "music/music2.mp4",
+      "type": "audio-video-container",
+      "dimensions": null,
+      "intendedUse": "Music candidate; playback withheld until source and public-use rights are confirmed.",
+      "source": "User-provided; audio codec, track title, duration, and public-use permission are unverified."
+    },
+    {
+      "path": "music/music3.mp4",
+      "type": "audio-video-container",
+      "dimensions": null,
+      "intendedUse": "Music candidate; playback withheld until source and public-use rights are confirmed.",
+      "source": "User-provided; audio codec, track title, duration, and public-use permission are unverified."
+    },
+    {
+      "path": "music/music4.mp4",
+      "type": "audio-video-container",
+      "dimensions": null,
+      "intendedUse": "Music candidate; playback withheld until source and public-use rights are confirmed.",
+      "source": "User-provided; audio codec, track title, duration, and public-use permission are unverified."
+    },
+    {
+      "path": "music/music5.mp4",
+      "type": "audio-video-container",
+      "dimensions": null,
+      "intendedUse": "Music candidate; playback withheld until source and public-use rights are confirmed.",
+      "source": "User-provided; audio codec, track title, duration, and public-use permission are unverified."
+    },
+    {
+      "path": "music/music6.mp4",
+      "type": "audio-video-container",
+      "dimensions": null,
+      "intendedUse": "Music candidate; playback withheld until source and public-use rights are confirmed.",
+      "source": "User-provided; audio codec, track title, duration, and public-use permission are unverified."
+    },
+    {
+      "path": "music/music7.mp4",
+      "type": "audio-video-container",
+      "dimensions": null,
+      "intendedUse": "Music candidate; playback withheld until source and public-use rights are confirmed.",
+      "source": "User-provided; audio codec, track title, duration, and public-use permission are unverified."
+    },
+    {
+      "path": "music/music8.mp4",
+      "type": "audio-video-container",
+      "dimensions": null,
+      "intendedUse": "Music candidate; playback withheld until source and public-use rights are confirmed.",
+      "source": "User-provided; audio codec, track title, duration, and public-use permission are unverified."
+    },
+    {
+      "path": "music/music9.mp4",
+      "type": "audio-video-container",
+      "dimensions": null,
+      "intendedUse": "Music candidate; playback withheld until source and public-use rights are confirmed.",
+      "source": "User-provided; audio codec, track title, duration, and public-use permission are unverified."
+    }
+  ]
+}

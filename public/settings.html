@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#090d12">
+    <title>Settings | TACTIOPBOT</title>
+    <link rel="stylesheet" href="/site.css">
+    <script src="/settings.js" defer></script>
+  </head>
+  <body>
+    <header class="dashboard-header">
+      <a href="/dashboard" class="dashboard-brand" aria-label="TACTIOPBOT Dashboard">
+        <img src="/media/images/logos/tactiopbot-wordmark.png" alt="">
+      </a>
+      <nav class="dashboard-nav" aria-label="Dashboard navigation">
+        <a href="/dashboard" class="nav-item" data-page="dashboard">Dashboard</a>
+        <a href="/dashboard/bot-chat" class="nav-item" data-page="bot-chat">Bot Chat</a>
+        <a href="/dashboard/video-announcements" class="nav-item" data-page="video-announcements">Video Announcements</a>
+        <a href="/dashboard/search-for-id" class="nav-item" data-page="search-for-id">Search for ID</a>
+        <a href="/dashboard/clan-war-manager" class="nav-item" data-page="clan-war-manager">Clan War Manager</a>
+        <a href="/dashboard/settings" class="nav-item active" data-page="settings">Settings</a>
+      </nav>
+      <div class="dashboard-user">
+        <button class="user-menu-trigger" aria-expanded="false" aria-haspopup="true" aria-label="User menu">
+          <span id="user-avatar" class="user-avatar" aria-hidden="true"></span>
+          <span id="user-name" class="user-name"></span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <menu class="user-menu" role="menu">
+          <li role="none"><span class="menu-header" id="menu-user-name"></span></li>
+          <li role="none"><span class="menu-header" id="menu-user-email"></span></li>
+          <li role="none"><hr></li>
+          <li role="none"><a href="/dashboard/settings" role="menuitem">Settings</a></li>
+          <li role="none"><button id="logout-button" role="menuitem" type="button">Sign out</button></li>
+        </menu>
+      </div>
+    </header>
+
+    <main class="dashboard-main">
+      <section class="settings-section">
+        <h1>Settings</h1>
+        <div class="settings-card">
+          <h2>Timezone</h2>
+          <p class="settings-description">Choose your timezone for the next clan mission reset display.</p>
+          <label class="field" for="timezone-select">
+            <span>Timezone</span>
+            <select id="timezone-select" class="control">
+              <option value="auto">Auto-detect from browser</option>
+            </select>
+            <small id="timezone-hint" class="muted"></small>
+          </label>
+          <p id="settings-error" class="feedback feedback-error hidden" role="alert"></p>
+          <p id="settings-success" class="feedback feedback-success hidden" role="status"></p>
+          <button id="save-timezone-button" class="button button-primary" type="button">Save timezone</button>
+        </div>
+
+        <div class="settings-card">
+          <h2>Profile</h2>
+          <form id="profile-form" class="email-auth-form">
+            <label class="field" for="full-name">
+              <span>Full name</span>
+              <input id="full-name" class="control" type="text" maxlength="100" autocomplete="name" required>
+            </label>
+            <label class="field" for="clan-name">
+              <span>Clan name</span>
+              <input id="clan-name" class="control" type="text" maxlength="40" autocomplete="off" required>
+              <small>Enter your actual clan name in Tacticool. TACTIOPBOT does not verify it with the game.</small>
+            </label>
+            <p id="profile-error" class="feedback feedback-error hidden" role="alert"></p>
+            <p id="profile-success" class="feedback feedback-success hidden" role="status"></p>
+            <button id="save-profile-button" class="button button-primary" type="submit">Save profile</button>
+          </form>
+        </div>
+
+        <div class="settings-card">
+          <h2>Account</h2>
+          <p id="account-email" class="muted"></p>
+          <p class="muted">Connected providers: <span id="account-providers"></span></p>
+        </div>
+      </section>
+    </main>
+
+    <script src="/site.js" defer></script>
+  </body>
+</html>

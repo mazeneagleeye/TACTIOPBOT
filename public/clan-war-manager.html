@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#061c37">
+    <meta name="description" content="Build and balance your TACTIOPBOT Clan War 5v5 teams.">
+    <title>Clan War Manager | TACTIOPBOT</title>
+    <link rel="stylesheet" href="/site.css">
+    <link rel="stylesheet" href="/clan-war.css">
+    <script src="/clan-war.js" defer></script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="TACTIOPBOT home">
+          <img class="brand-mark" src="/media/images/logos/tactiopbot.png.jpeg" alt="">
+          <span>TACTIO<span class="brand-accent">PBOT</span></span>
+        </a>
+        <nav class="war-navigation" aria-label="Clan War navigation">
+          <a href="/">Command center</a>
+          <a href="/dashboard/clan-war-manager/history">War history</a>
+        </nav>
+      </header>
+
+      <main class="war-page">
+        <section class="war-heading">
+          <div>
+            <p class="eyebrow">TACTIOPBOT WEB / CLAN OPERATIONS</p>
+            <h1>Clan War<br><span>Manager.</span></h1>
+            <p>Build. Balance. Battle.</p>
+          </div>
+          <div class="war-heading-mark" aria-hidden="true">5<span>v</span>5</div>
+        </section>
+
+        <div id="account-status" class="war-notice" role="status" aria-live="polite">
+          Checking your account…
+        </div>
+
+        <section class="war-section">
+          <div class="war-section-title">
+            <div>
+              <p class="eyebrow">01 / PLAYER SETUP</p>
+              <h2>Set your roster</h2>
+            </div>
+            <div class="roster-counts">
+              <span id="player-count">0 / 10 Players</span>
+              <span id="leader-count">0 / 2 Leaders</span>
+            </div>
+          </div>
+          <p class="section-description">Enter each player’s name and rank, mark exactly two leaders, and assign teams. Duplicate names are allowed but will be flagged.</p>
+          <div id="players-list" class="players-list"></div>
+          <p id="duplicate-warning" class="validation-note hidden" role="status"></p>
+          <div class="war-action-row">
+            <button id="balance-button" class="button button-outline" type="button" disabled>Auto balance teams</button>
+            <span class="muted">Balancing checks all valid 5v5 splits and keeps one leader on each team.</span>
+          </div>
+        </section>
+
+        <section class="war-section">
+          <div class="war-section-title">
+            <div>
+              <p class="eyebrow">02 / TEAM BALANCE</p>
+              <h2>Check the split</h2>
+            </div>
+            <div class="balance-summary">
+              <span>Difference</span>
+              <strong id="balance-difference">—</strong>
+            </div>
+          </div>
+          <p id="validation-message" class="validation-note" role="status" aria-live="polite">Complete all player fields to validate the match.</p>
+          <div class="war-team-grid">
+            <section class="team-panel team-a">
+              <div class="team-panel-heading"><h3>Team A</h3><span id="team-a-total">Total —</span></div>
+              <div id="team-a-players" class="team-player-list"></div>
+            </section>
+            <section class="team-panel team-b">
+              <div class="team-panel-heading"><h3>Team B</h3><span id="team-b-total">Total —</span></div>
+              <div id="team-b-players" class="team-player-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="war-section schedule-section">
+          <div class="war-section-title">
+            <div>
+              <p class="eyebrow">03 / DAILY SCHEDULE</p>
+              <h2>Set the time</h2>
+            </div>
+          </div>
+          <p class="section-description">This is a recurring daily time. No calendar date is required; daylight-saving changes follow the selected IANA timezone.</p>
+          <div class="schedule-fields">
+            <label class="field">
+              <span>Local time (24-hour)</span>
+              <input id="war-time" class="control" type="time" value="16:00" required>
+            </label>
+            <label class="field">
+              <span>Timezone</span>
+              <select id="war-timezone" class="control">
+                <option value="Europe/Berlin">Central Europe (CET/CEST)</option>
+                <option value="Africa/Cairo">Cairo — Egypt</option>
+                <option value="Europe/Istanbul">Turkey (TRT)</option>
+                <option value="Etc/UTC">UTC</option>
+              </select>
+            </label>
+          </div>
+          <div class="war-actions">
+            <button id="save-war" class="button button-primary" type="button" disabled>Save Clan War</button>
+            <button id="generate-poster" class="button button-outline" type="button" disabled>Generate War Image</button>
+          </div>
+          <p id="save-status" class="feedback" role="status" aria-live="polite"></p>
+        </section>
+
+        <section id="poster-section" class="war-section hidden">
+          <div class="war-section-title">
+            <div>
+              <p class="eyebrow">04 / SHAREABLE POSTER</p>
+              <h2>Your War Image</h2>
+            </div>
+
+          </div>
+            <a id="download-poster" class="button button-outline hidden" download="clan-war.png">Download PNG</a>
+          <img id="poster-preview" class="poster-preview hidden" alt="Generated Clan War 5v5 poster">
+          <p id="poster-status" class="feedback" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="war-section">
+          <div class="war-section-title">
+            <div>
+              <p class="eyebrow">05 / READY TO SHARE</p>
+              <h2>Clan War text</h2>
+            </div>
+            <button id="copy-war-text" class="button button-outline" type="button" disabled>Copy Clan War Text</button>
+          </div>
+          <pre id="war-text" class="war-text" aria-live="polite">Complete a valid roster to preview the share text.</pre>
+          <p id="copy-status" class="feedback" role="status" aria-live="polite"></p>
+        </section>
+
+        <section id="war-history-section" class="war-section">
+          <div class="war-section-title">
+            <div>
+              <p class="eyebrow">06 / YOUR SAVED RECORDS</p>
+              <h2>War history</h2>
+            </div>
+          </div>
+          <div id="war-history" class="war-history">
+            <p class="muted">Sign in to load your saved Clan Wars.</p>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <a class="footer-brand" href="/" aria-label="TACTIOPBOT home">
+          <img src="/media/images/logos/tactiopbot-wordmark.png" alt="">
+        </a>
+        <span>OLD IS GOLD.</span>
+        <a href="#top">Back to top ↑</a>
+      </footer>
+    </div>
+  </body>
+</html>

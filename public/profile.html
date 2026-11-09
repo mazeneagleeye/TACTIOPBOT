@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#090d12">
+    <title>Complete your profile | TACTIOPBOT</title>
+    <link rel="stylesheet" href="/site.css">
+    <script src="/profile.js" defer></script>
+  </head>
+  <body>
+    <main class="account-section profile-completion">
+      <a class="footer-brand" href="/" aria-label="TACTIOPBOT home">
+        <img src="/media/images/logos/tactiopbot-wordmark.png" alt="">
+      </a>
+      <div class="auth-card">
+        <p class="eyebrow">ONE LAST STEP</p>
+        <h1>Complete your TACTIOPBOT profile</h1>
+        <p>Your clan name is required before you can access the dashboard.</p>
+        <p id="profile-identity" class="muted" aria-live="polite"></p>
+        <form id="profile-completion-form" class="email-auth-form">
+          <label class="field" for="clan-name">
+            <span>Clan name</span>
+            <input id="clan-name" class="control" type="text" maxlength="40" autocomplete="off" required>
+            <small>Enter your actual clan name in Tacticool. TACTIOPBOT does not verify it with the game.</small>
+          </label>
+          <label class="field" for="timezone-select">
+            <span>Timezone</span>
+            <select id="timezone-select" class="control">
+              <option value="auto">Auto-detect from browser</option>
+            </select>
+            <small>Choose your timezone for the next clan mission reset display. You can change this later in settings.</small>
+          </label>
+          <button id="complete-profile-button" class="button button-primary" type="submit">Save and continue</button>
+          <p id="profile-error" class="feedback feedback-error hidden" role="alert"></p>
+        </form>
+        <button id="profile-logout-button" class="button button-quiet" type="button">Sign out</button>
+      </div>
+    </main>
+  </body>
+</html>
