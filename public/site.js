@@ -93,38 +93,115 @@ for (const featureButton of document.querySelectorAll("[data-feature]")) {
   });
 }
 
-const musicPlayer = document.querySelector(".music-player");
-const musicAudio = document.querySelector("#music-audio");
-const musicTrack = document.querySelector("#music-track");
-const musicStatus = document.querySelector("#music-status");
+// Floating AI Assistant
+const aiButton = document.querySelector("#ai-assistant-button");
+const aiPanel = document.querySelector("#ai-assistant-panel");
+const aiClose = document.querySelector("#ai-assistant-close");
+const aiForm = document.querySelector("#ai-assistant-form");
+const aiInput = document.querySelector("#ai-assistant-input");
+const aiMessages = document.querySelector("#ai-assistant-messages");
+const aiQuickActions = document.querySelectorAll(".ai-quick-action");
 
-function selectMusicTrack() {
-  if (!musicAudio || !musicTrack || !musicStatus) return;
-  const trackNumber = Number(musicTrack.value);
-  if (!Number.isInteger(trackNumber) || trackNumber < 1 || trackNumber > 9) return;
-  const shouldResume = !musicAudio.paused;
-  musicAudio.src = `/media/music/music${trackNumber}.mp4`;
-  musicAudio.load();
-  musicStatus.textContent = `Track ${String(trackNumber).padStart(2, "0")} selected. Press play to listen.`;
-  if (shouldResume) {
-    musicAudio.play().catch(() => {
-      musicStatus.textContent = "Playback was blocked. Press play to try again.";
-    });
+const aiResponses = {
+  missions: "Clan Missions reset daily. Use the Mission Reminder settings in Bot Chat to configure notifications for your Discord server. You can set the channel, role, and language.",
+  "clan-war": "The Clan War Manager lets you build balanced 5v5 teams. Enter 10 players with their ranks, mark exactly 2 leaders, and use Auto Balance to find the optimal split with minimum rank difference.",
+  settings: "In Settings, you can update your timezone for accurate mission reset times, change your profile name and clan name, and manage connected accounts (Google, Discord, Email).",
+  help: "TACTIOPBOT helps you manage Tacticool clan operations: mission reminders, clan wars, and server settings. Use the dashboard cards to navigate to each feature.",
+  default: "I'm here to help with TACTIOPBOT features. Ask me about clan missions, clan wars, settings, or anything else!"
+};
+
+function addAIMessage(content, isUser = false) {
+  const messageDiv = document.createElement("div");
+  messageDiv.className = `ai-message ${isUser ? "ai-message-user" : "ai-message-bot"}`;
+  messageDiv.innerHTML = `
+    <div class="ai-message-avatar">
+      <img src="/media/images/logos/tactiopbot-logo.png.jpeg" alt="">
+    </div>
+    <div class="ai-message-content">
+      <p>${content}</p>
+    </div>
+  `;
+  aiMessages.appendChild(messageDiv);
+  aiMessages.scrollTop = aiMessages.scrollHeight;
+}
+
+function toggleAIPanel() {
+  const isOpen = aiPanel.classList.toggle("hidden");
+  aiButton.setAttribute("aria-expanded", String(!isOpen));
+  if (!isOpen) {
+    aiInput.focus();
   }
 }
 
-if (musicPlayer && musicAudio && musicTrack && musicStatus) {
+function sendAIMessage() {
+  const text = aiInput.value.trim();
+  if (!text) return;
+  addAIMessage(text, true);
+  aiInput.value = "";
+  
+  // Simulate bot response
+  const lowerText = text.toLowerCase();
+  let response = aiResponses.default;
+  for (const [key, value] of Object.entries(aiResponses)) {
+    if (lowerText.includes(key)) {
+      response = value;
+      break;
+    }
+  }
+  
+  setTimeout(() => {
+    addAIMessage(response);
+  }, 500);
+}
+
+if (aiButton && aiPanel && aiClose && aiForm && aiInput && aiMessages) {
+  aiButton.addEventListener("click", toggleAIPanel);
+  aiClose.addEventListener("click", () => {
+    aiPanel.classList.add("hidden");
+    aiButton.setAttribute("aria-expanded", "false");
+  });
+  
+  aiForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    sendAIMessage();
+  });
+  
+  aiQuickActions.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const action = btn.dataset.action;
+      addAIMessage(btn.textContent, true);
+      setTimeout(() => {
+        addAIMessage(aiResponses[action] || aiResponses.default);
+      }, 400);
+    });
+  });
+  
+  // Close panel when clicking outside
+  document.addEventListener("click", (e) => {
+    if (!aiPanel.classList.contains("hidden") && 
+        !aiPanel.contains(e.target) && 
+        !aiButton.contains(e.target)) {
+      aiPanel.classList.add("hidden");
+      aiButton.setAttribute("aria-expanded", "false");
+    }
+  });
+  
+  // Close on Escape
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !aiPanel.classList.contains("hidden")) {
+      aiPanel.classList.add("hidden");
+      aiButton.setAttribute("aria-expanded", "false");
+    }
+  });
+}
+
+// Close AI panel when music player opens
+const musicPlayer = document.querySelector(".music-player");
+if (musicPlayer) {
   musicPlayer.addEventListener("toggle", () => {
-    if (musicPlayer.open && !musicAudio.src) selectMusicTrack();
-  });
-  musicTrack.addEventListener("change", selectMusicTrack);
-  musicAudio.addEventListener("playing", () => {
-    musicStatus.textContent = `Playing track ${String(musicTrack.value).padStart(2, "0")}.`;
-  });
-  musicAudio.addEventListener("pause", () => {
-    musicStatus.textContent = "Playback paused.";
-  });
-  musicAudio.addEventListener("error", () => {
-    musicStatus.textContent = "This track could not be played in this browser.";
+    if (musicPlayer.open && aiPanel && !aiPanel.classList.contains("hidden")) {
+      aiPanel.classList.add("hidden");
+      aiButton.setAttribute("aria-expanded", "false");
+    }
   });
 }

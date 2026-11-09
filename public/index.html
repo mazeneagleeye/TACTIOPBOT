@@ -3,9 +3,41 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#090d12">
-    <meta name="description" content="TACTIOPBOT brings Tacticool clan operations, mission reminders, and Discord server settings into one command center.">
-    <title>TACTIOPBOT | Your Tactical Clan Assistant</title>
+    <meta name="theme-color" content="#061c37">
+    <meta name="description" content="TACTIOPBOT — Your ultimate companion for Tacticool clan missions, notifications, clan wars, and community management.">
+    <meta name="keywords" content="TACTIOPBOT, Tacticool, clan missions, clan war, Discord bot, gaming community">
+    <meta name="author" content="TACTIOPBOT">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://www.tactiopbot.qd.je/">
+    <link rel="preconnect" href="https://www.tactiopbot.qd.je">
+    
+    <!-- Favicon and App Icons -->
+    <link rel="icon" type="image/svg+xml" href="/media/images/logos/tactiopbot-logo.png.jpeg">
+    <link rel="icon" type="image/png" sizes="32x32" href="/media/images/logos/tactiopbot-logo.png.jpeg">
+    <link rel="icon" type="image/png" sizes="16x16" href="/media/images/logos/tactiopbot-logo.png.jpeg">
+    <link rel="apple-touch-icon" sizes="180x180" href="/media/images/logos/tactiopbot-logo.png.jpeg">
+    <link rel="manifest" href="/site.webmanifest">
+    
+    <!-- Open Graph / Social Sharing -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.tactiopbot.qd.je/">
+    <meta property="og:title" content="TACTIOPBOT | Tacticool Clan Mission & Community Bot">
+    <meta property="og:description" content="TACTIOPBOT — Your ultimate companion for Tacticool clan missions, notifications, clan wars, and community management.">
+    <meta property="og:image" content="https://www.tactiopbot.qd.je/media/images/logos/tactiopbot.png.jpeg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="TACTIOPBOT">
+    <meta property="og:locale" content="en_US">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="https://www.tactiopbot.qd.je/">
+    <meta name="twitter:title" content="TACTIOPBOT | Tacticool Clan Mission & Community Bot">
+    <meta name="twitter:description" content="TACTIOPBOT — Your ultimate companion for Tacticool clan missions, notifications, clan wars, and community management.">
+    <meta name="twitter:image" content="https://www.tactiopbot.qd.je/media/images/logos/tactiopbot.png.jpeg">
+    <meta name="twitter:image:alt" content="TACTIOPBOT logo">
+    
+    <title>TACTIOPBOT | Tacticool Clan Mission & Community Bot</title>
     <link rel="preload" as="image" href="/media/images/logos/tactiopbot.png.jpeg">
     <link rel="stylesheet" href="/site.css">
     <script src="/site.js" defer></script>
@@ -469,10 +501,48 @@
           <option value="7">Track 07</option>
           <option value="8">Track 08</option>
           <option value="9">Track 09</option>
-        </select>
-        <audio id="music-audio" controls controlsList="nodownload" loop preload="none"></audio>
-        <p id="music-status" class="music-status" role="status" aria-live="polite">Choose a track and press play.</p>
+</select>
+          <audio id="music-audio" controls controlsList="nodownload" loop preload="none"></audio>
+          <p id="music-status" class="music-status" role="status" aria-live="polite">Choose a track and press play.</p>
+        </div>
+      </details>
+
+      <!-- Floating AI Assistant Button -->
+      <button id="ai-assistant-button" class="ai-assistant-button" type="button" aria-label="Open TACTIOPBOT Assistant" aria-expanded="false">
+        <img src="/media/images/logos/tactiopbot-logo.png.jpeg" alt="" class="ai-assistant-logo">
+        <span class="ai-assistant-badge" aria-hidden="true"></span>
+      </button>
+      <div id="ai-assistant-panel" class="ai-assistant-panel hidden" role="dialog" aria-label="TACTIOPBOT Assistant" aria-modal="true">
+        <div class="ai-assistant-header">
+          <h2>TACTIOPBOT Assistant</h2>
+          <button id="ai-assistant-close" class="ai-assistant-close" type="button" aria-label="Close assistant">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="ai-assistant-messages" id="ai-assistant-messages" role="log" aria-live="polite" aria-label="Assistant messages">
+          <div class="ai-message ai-message-bot">
+            <div class="ai-message-avatar">
+              <img src="/media/images/logos/tactiopbot-logo.png.jpeg" alt="">
+            </div>
+            <div class="ai-message-content">
+              <p>Welcome! I'm your TACTIOPBOT assistant. How can I help you today?</p>
+            </div>
+          </div>
+        </div>
+        <form class="ai-assistant-input" id="ai-assistant-form">
+          <label class="visually-hidden" for="ai-assistant-input">Ask TACTIOPBOT assistant</label>
+          <input type="text" id="ai-assistant-input" placeholder="Ask about missions, clan wars, settings..." autocomplete="off" maxlength="500">
+          <button type="submit" class="ai-assistant-send" aria-label="Send message">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          </button>
+        </form>
+        <div class="ai-assistant-quick-actions" role="group" aria-label="Quick actions">
+          <button type="button" class="ai-quick-action" data-action="missions">Clan Missions</button>
+          <button type="button" class="ai-quick-action" data-action="clan-war">Clan War Manager</button>
+          <button type="button" class="ai-quick-action" data-action="settings">Settings</button>
+          <button type="button" class="ai-quick-action" data-action="help">Help</button>
+        </div>
       </div>
-    </details>
+    </div>
   </body>
 </html>
