@@ -157,8 +157,6 @@ app.use((req, res, next) => {
   });
   next();
 });
-  next();
-});
 
 app.get("/clan-war-manager.html", (_req, res) => {
   res.redirect("/dashboard/clan-war-manager");
