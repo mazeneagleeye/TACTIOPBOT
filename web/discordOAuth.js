@@ -106,6 +106,41 @@ function getRedirectOrigin(value, isProduction) {
   }
 }
 
+function getAllowedWebOrigins(isProduction) {
+  const origins = new Set();
+  const envKeys = ["WEB_ALLOWED_ORIGINS", "SITE_URL", "PUBLIC_APP_URL", "PUBLIC_URL", "APP_URL"];
+  for (const key of envKeys) {
+    const raw = process.env[key];
+    if (typeof raw !== "string" || !raw.trim()) continue;
+    for (const part of raw.split(/[\s,]+/)) {
+      if (!part) continue;
+      const origin = getRedirectOrigin(part, isProduction);
+      if (origin) origins.add(origin);
+    }
+  }
+  return origins;
+}
+
+function getRequestOrigin(req) {
+  try {
+    const protocol = req.protocol === "https" || req.protocol === "http" ? req.protocol : null;
+    const host = req.hostname;
+    if (!protocol || typeof host !== "string" || !host) return null;
+    const hostHeader = req.get("host") || "";
+    const portMatch = hostHeader.match(/:(\d+)$/);
+    const port = portMatch ? Number(portMatch[1]) : (protocol === "https" ? 443 : 80);
+    const url = new URL(`${protocol}://${host}`);
+    if (Number.isInteger(port) && port > 0 && url.port !== String(port)) {
+      if (!((protocol === "https" && port === 443) || (protocol === "http" && port === 80))) {
+        url.port = String(port);
+      }
+    }
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 function isCallbackUri(value, pathname, isProduction) {
   if (!getRedirectOrigin(value, isProduction)) return false;
   const url = new URL(value);
@@ -1775,18 +1810,33 @@ function matchesOAuthState(expected, received) {
 }
 
 function requireSameOrigin(req, res, next) {
-  const allowedOrigins = new Set([
-    getRedirectOrigin(process.env.DISCORD_OAUTH_REDIRECT_URI, process.env.NODE_ENV === "production"),
-    getRedirectOrigin(process.env.GOOGLE_OAUTH_REDIRECT_URI, process.env.NODE_ENV === "production"),
-  ].filter(Boolean));
-  try {
-    const host = req.get("host");
-    if (!host) throw new Error("Request host is missing.");
-    allowedOrigins.add(new URL(`${req.protocol}://${host}`).origin);
-  } catch {
+  const isProduction = process.env.NODE_ENV === "production";
+  const origin = req.get("origin");
+  if (typeof origin !== "string" || !origin) {
     return res.status(403).json({ error: "Cross-origin request rejected." });
   }
-  if (!allowedOrigins.has(req.get("origin"))) {
+
+  const allowedOrigins = new Set([
+    getRedirectOrigin(process.env.DISCORD_OAUTH_REDIRECT_URI, isProduction),
+    getRedirectOrigin(process.env.GOOGLE_OAUTH_REDIRECT_URI, isProduction),
+    ...getAllowedWebOrigins(isProduction),
+  ].filter(Boolean));
+
+  const requestOrigin = getRequestOrigin(req);
+  if (requestOrigin) allowedOrigins.add(requestOrigin);
+
+  const hostOrigin = (() => {
+    try {
+      const host = req.get("host");
+      if (!host) return null;
+      return new URL(`${req.protocol}://${host}`).origin;
+    } catch {
+      return null;
+    }
+  })();
+  if (hostOrigin) allowedOrigins.add(hostOrigin);
+
+  if (!allowedOrigins.has(origin)) {
     return res.status(403).json({ error: "Cross-origin request rejected." });
   }
   next();
