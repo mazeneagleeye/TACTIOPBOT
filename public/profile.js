@@ -22,6 +22,14 @@ const COMMON_TIMEZONES = [
   { value: "Pacific/Auckland", label: "Auckland (NZST/NZDT)" },
 ];
 
+function getErrorMessage(error, fallback) {
+  if (!error) return fallback;
+  const message = error.message;
+  if (typeof message === "string" && message.length > 0) return message;
+  if (typeof message === "object" && message !== null) return String(message);
+  return fallback;
+}
+
 function populateTimezoneSelect() {
   if (!timezoneSelect) return;
   const detected = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -59,7 +67,7 @@ async function loadProfile() {
     identity.textContent = account.fullName || account.email || "";
     populateTimezoneSelect();
   } catch (error) {
-    errorMessage.textContent = error.message || "Your profile could not be loaded.";
+    errorMessage.textContent = getErrorMessage(error, "Your profile could not be loaded.");
     errorMessage.classList.remove("hidden");
   }
 }
@@ -79,7 +87,7 @@ form.addEventListener("submit", async (event) => {
     });
     window.location.assign("/");
   } catch (error) {
-    errorMessage.textContent = error.message || "Your clan name could not be saved.";
+    errorMessage.textContent = getErrorMessage(error, "Your clan name could not be saved.");
     errorMessage.classList.remove("hidden");
     submitButton.disabled = false;
   }
@@ -91,7 +99,7 @@ logoutButton.addEventListener("click", async () => {
     await requestJson("/auth/logout", { method: "POST" });
     window.location.assign("/");
   } catch (error) {
-    errorMessage.textContent = error.message || "You could not be signed out.";
+    errorMessage.textContent = getErrorMessage(error, "You could not be signed out.");
     errorMessage.classList.remove("hidden");
     logoutButton.disabled = false;
   }

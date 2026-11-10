@@ -190,13 +190,21 @@ function show(element, visible) {
   element.classList.toggle("hidden", !visible);
 }
 
+function getErrorMessage(error, fallback) {
+  if (!error) return fallback;
+  const message = error.message;
+  if (typeof message === "string" && message.length > 0) return message;
+  if (typeof message === "object" && message !== null) return String(message);
+  return fallback;
+}
+
 function setFeedback(message, kind) {
   elements.feedback.textContent = message;
   elements.feedback.className = `feedback feedback-${kind}`;
 }
 
 function showAuthError(message) {
-  elements.authNotice.textContent = message;
+  elements.authNotice.textContent = getErrorMessage({ message }, "An error occurred.");
   show(elements.authNotice, true);
 }
 
@@ -234,7 +242,7 @@ async function loadProviderStatus() {
       ? "Continue with Discord"
       : "Discord sign-in is not configured";
   } catch (error) {
-    showAuthError(error.message || "Sign-in options could not be loaded.");
+    showAuthError(getErrorMessage(error, "Sign-in options could not be loaded."));
   }
 }
 
@@ -311,7 +319,7 @@ async function loadGuildSettings(guildId) {
     setFeedback(
       error.status === 401
         ? "Your Discord session expired. Sign out and sign in again."
-        : error.message || "Could not load this server's settings.",
+        : getErrorMessage(error, "Could not load this server's settings."),
       "error"
     );
   } finally {
@@ -463,7 +471,7 @@ async function initializeDashboard() {
       show(elements.dashboardIntegrationNote, true);
       elements.dashboardIntegrationNote.className = "feedback feedback-error";
       elements.dashboardIntegrationNote.textContent =
-        error.message || "Your dashboard data could not be loaded.";
+        getErrorMessage(error, "Your dashboard data could not be loaded.");
       if (state.discordConnected && error.status === 401) {
         show(elements.connectDiscord, true);
         elements.connectDiscordCopy.textContent = "Your account is signed in, but Discord access needs to be reconnected.";
@@ -482,7 +490,7 @@ async function initializeDashboard() {
     show(elements.login, true);
     await loadProviderStatus();
     if (!elements.authNotice.textContent) {
-      showAuthError(error.message || "The dashboard could not connect to its server.");
+      showAuthError(getErrorMessage(error, "The dashboard could not connect to its server."));
     }
   } finally {
     show(elements.loading, false);
@@ -545,7 +553,7 @@ elements.loginForm.addEventListener("submit", async (event) => {
     beginEmailVerification("login", response.email);
     elements.loginPassword.value = "";
   } catch (error) {
-    elements.loginFormError.textContent = error.message || "Sign-in failed.";
+    elements.loginFormError.textContent = getErrorMessage(error, "Sign-in failed.");
     show(elements.loginFormError, true);
     elements.loginSubmit.disabled = false;
   }
@@ -569,7 +577,7 @@ elements.registrationForm.addEventListener("submit", async (event) => {
     beginEmailVerification("register", response.email);
     elements.registrationPassword.value = "";
   } catch (error) {
-    elements.registrationError.textContent = error.message || "Account registration failed.";
+    elements.registrationError.textContent = getErrorMessage(error, "Account registration failed.");
     show(elements.registrationError, true);
     elements.registrationSubmit.disabled = false;
   }
@@ -591,7 +599,7 @@ elements.emailVerificationForm.addEventListener("submit", async (event) => {
     });
     window.location.assign("/");
   } catch (error) {
-    elements.emailVerificationError.textContent = error.message || "The code could not be verified.";
+    elements.emailVerificationError.textContent = getErrorMessage(error, "The code could not be verified.");
     elements.emailVerificationError.className = "feedback feedback-error";
     show(elements.emailVerificationError, true);
     elements.emailVerificationSubmit.disabled = false;
@@ -608,7 +616,7 @@ elements.emailVerificationResend.addEventListener("click", async () => {
     elements.emailVerificationError.className = "feedback feedback-success";
     show(elements.emailVerificationError, true);
   } catch (error) {
-    elements.emailVerificationError.textContent = error.message || "A new code could not be sent.";
+    elements.emailVerificationError.textContent = getErrorMessage(error, "A new code could not be sent.");
     elements.emailVerificationError.className = "feedback feedback-error";
     show(elements.emailVerificationError, true);
   } finally {
@@ -623,7 +631,7 @@ elements.emailVerificationBack.addEventListener("click", async () => {
   try {
     await requestJson("/auth/verification/cancel", { method: "POST" });
   } catch (error) {
-    elements.emailVerificationError.textContent = error.message || "The verification could not be canceled.";
+    elements.emailVerificationError.textContent = getErrorMessage(error, "The verification could not be canceled.");
     elements.emailVerificationError.className = "feedback feedback-error";
     show(elements.emailVerificationError, true);
     elements.emailVerificationBack.disabled = false;
@@ -683,7 +691,7 @@ elements.profileForm.addEventListener("submit", async (event) => {
     elements.profileFeedback.className = "feedback feedback-success";
     show(elements.profileFeedback, true);
   } catch (error) {
-    elements.profileFeedback.textContent = error.message || "Your clan name could not be updated.";
+    elements.profileFeedback.textContent = getErrorMessage(error, "Your clan name could not be updated.");
     elements.profileFeedback.className = "feedback feedback-error";
     show(elements.profileFeedback, true);
   } finally {
@@ -702,7 +710,7 @@ elements.profileTimezoneMode.addEventListener("change", () => {
 elements.profileTimezoneSearch.addEventListener("input", filterTimezoneOptions);
 
 function setProfileSecurityFeedback(element, message, kind = "error") {
-  element.textContent = message;
+  element.textContent = getErrorMessage({ message }, message);
   element.className = `feedback feedback-${kind}`;
   show(element, true);
 }
@@ -725,7 +733,7 @@ elements.emailChangeSend.addEventListener("click", async () => {
     elements.emailChangeCode.focus();
     setProfileSecurityFeedback(elements.emailChangeFeedback, "Check your current email inbox.", "success");
   } catch (error) {
-    setProfileSecurityFeedback(elements.emailChangeFeedback, error.message || "A verification code could not be sent.");
+    setProfileSecurityFeedback(elements.emailChangeFeedback, getErrorMessage(error, "A verification code could not be sent."));
     elements.emailChangeSend.disabled = false;
   }
 });
@@ -760,7 +768,7 @@ elements.emailChangeForm.addEventListener("submit", async (event) => {
     elements.emailChangeSend.disabled = false;
     setProfileSecurityFeedback(elements.emailChangeFeedback, "Your email address was changed.", "success");
   } catch (error) {
-    setProfileSecurityFeedback(elements.emailChangeFeedback, error.message || "Your email address could not be changed.");
+    setProfileSecurityFeedback(elements.emailChangeFeedback, getErrorMessage(error, "Your email address could not be changed."));
   } finally {
     elements.emailChangeVerify.disabled = false;
   }
@@ -772,7 +780,7 @@ elements.emailChangeResend.addEventListener("click", async () => {
     await requestJson("/api/profile/email/resend", { method: "POST" });
     setProfileSecurityFeedback(elements.emailChangeFeedback, "A new verification code was sent.", "success");
   } catch (error) {
-    setProfileSecurityFeedback(elements.emailChangeFeedback, error.message || "A new code could not be sent.");
+    setProfileSecurityFeedback(elements.emailChangeFeedback, getErrorMessage(error, "A new code could not be sent."));
   } finally {
     elements.emailChangeResend.disabled = false;
   }
@@ -795,7 +803,7 @@ elements.passwordChangeSend.addEventListener("click", async () => {
     elements.passwordChangeCode.focus();
     setProfileSecurityFeedback(elements.passwordChangeFeedback, "Check your account email inbox.", "success");
   } catch (error) {
-    setProfileSecurityFeedback(elements.passwordChangeFeedback, error.message || "A verification code could not be sent.");
+    setProfileSecurityFeedback(elements.passwordChangeFeedback, getErrorMessage(error, "A verification code could not be sent."));
     elements.passwordChangeSend.disabled = false;
   }
 });
@@ -818,7 +826,7 @@ elements.passwordChangeForm.addEventListener("submit", async (event) => {
     elements.passwordChangeSend.disabled = false;
     setProfileSecurityFeedback(elements.passwordChangeFeedback, "Your password was changed.", "success");
   } catch (error) {
-    setProfileSecurityFeedback(elements.passwordChangeFeedback, error.message || "Your password could not be changed.");
+    setProfileSecurityFeedback(elements.passwordChangeFeedback, getErrorMessage(error, "Your password could not be changed."));
   } finally {
     elements.passwordChangeVerify.disabled = false;
   }
@@ -830,7 +838,7 @@ elements.passwordChangeResend.addEventListener("click", async () => {
     await requestJson("/api/profile/password/resend", { method: "POST" });
     setProfileSecurityFeedback(elements.passwordChangeFeedback, "A new verification code was sent.", "success");
   } catch (error) {
-    setProfileSecurityFeedback(elements.passwordChangeFeedback, error.message || "A new code could not be sent.");
+    setProfileSecurityFeedback(elements.passwordChangeFeedback, getErrorMessage(error, "A new code could not be sent."));
   } finally {
     elements.passwordChangeResend.disabled = false;
   }
@@ -842,7 +850,7 @@ elements.accountLogout.addEventListener("click", async () => {
     await requestJson("/auth/logout", { method: "POST" });
     window.location.reload();
   } catch (error) {
-    elements.connectError.textContent = error.message || "Could not sign out.";
+    elements.connectError.textContent = getErrorMessage(error, "Could not sign out.");
     show(elements.connectError, true);
     elements.accountLogout.disabled = false;
   }
@@ -878,7 +886,7 @@ elements.settingsForm.addEventListener("submit", async (event) => {
     show(elements.deleteButton, true);
     setFeedback("Settings saved. The Discord bot will use these shared settings.", "success");
   } catch (error) {
-    setFeedback(error.message || "Settings could not be saved.", "error");
+    setFeedback(getErrorMessage(error, "Settings could not be saved."), "error");
   } finally {
     elements.saveButton.disabled = false;
   }
@@ -901,7 +909,7 @@ elements.deleteButton.addEventListener("click", async () => {
     show(elements.deleteButton, false);
     setFeedback(response.deleted ? "Settings deleted." : "There were no settings to delete.", "success");
   } catch (error) {
-    setFeedback(error.message || "Settings could not be deleted.", "error");
+    setFeedback(getErrorMessage(error, "Settings could not be deleted."), "error");
   } finally {
     elements.deleteButton.disabled = false;
   }
@@ -916,7 +924,7 @@ elements.emailTestButton.addEventListener("click", async () => {
     elements.emailTestFeedback.className = "feedback feedback-success";
     show(elements.emailTestFeedback, true);
   } catch (error) {
-    elements.emailTestFeedback.textContent = error.message || "The test email could not be sent.";
+    elements.emailTestFeedback.textContent = getErrorMessage(error, "The test email could not be sent.");
     elements.emailTestFeedback.className = "feedback feedback-error";
     show(elements.emailTestFeedback, true);
   } finally {
@@ -932,7 +940,7 @@ elements.logout.addEventListener("click", async () => {
   } catch (error) {
     elements.logout.disabled = false;
     show(elements.dashboard, true);
-    setFeedback(error.message || "Could not sign out.", "error");
+    setFeedback(getErrorMessage(error, "Could not sign out."), "error");
   }
 });
 

@@ -31,6 +31,14 @@ const state = {
   hasLoadedMessages: false,
 };
 
+function getErrorMessage(error, fallback) {
+  if (!error) return fallback;
+  const message = error.message;
+  if (typeof message === "string" && message.length > 0) return message;
+  if (typeof message === "object" && message !== null) return String(message);
+  return fallback;
+}
+
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
     credentials: "same-origin",
@@ -232,7 +240,7 @@ async function loadState() {
     state.hasLoadedMessages = true;
     renderNotifications(data.notifications, data.unreadCount);
   } catch (error) {
-    setStatus(error.message);
+    setStatus(getErrorMessage(error, "Could not load messages."));
   } finally {
     state.requestInProgress = false;
   }
@@ -258,7 +266,7 @@ async function loadCommands() {
       elements.commandList.append(item);
     }
   } catch (error) {
-    elements.commandList.textContent = error.message;
+    elements.commandList.textContent = getErrorMessage(error, "Could not load commands.");
   }
 }
 
@@ -358,7 +366,7 @@ async function sendMessage(content) {
     setStatus("");
     await loadState();
   } catch (error) {
-    setStatus(error.message);
+    setStatus(getErrorMessage(error, "Could not send message."));
   } finally {
     elements.send.disabled = false;
     elements.input.focus();
@@ -391,7 +399,7 @@ elements.markRead.addEventListener("click", async () => {
     await requestJson("/api/bot-chat/notifications/read", { method: "POST", body: "{}" });
     await loadState();
   } catch (error) {
-    setStatus(error.message);
+    setStatus(getErrorMessage(error, "Could not mark notifications as read."));
   }
 });
 
@@ -419,7 +427,7 @@ async function saveSettings() {
       ? "Clan Mission reminders are on."
       : "Clan Mission reminders are off.";
   } catch (error) {
-    elements.settingsStatus.textContent = error.message;
+    elements.settingsStatus.textContent = getErrorMessage(error, "Could not save settings.");
   }
 }
 
@@ -432,7 +440,7 @@ elements.logout.addEventListener("click", async () => {
     await requestJson("/auth/logout", { method: "POST", body: "{}" });
     window.location.assign("/");
   } catch (error) {
-    setStatus(error.message);
+    setStatus(getErrorMessage(error, "Could not sign out."));
     elements.logout.disabled = false;
   }
 });

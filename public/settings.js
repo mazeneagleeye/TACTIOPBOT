@@ -14,6 +14,14 @@ const COMMON_TIMEZONES = [
   { value: "Pacific/Auckland", label: "Auckland (NZST/NZDT)" },
 ];
 
+function getErrorMessage(error, fallback) {
+  if (!error) return fallback;
+  const message = error.message;
+  if (typeof message === "string" && message.length > 0) return message;
+  if (typeof message === "object" && message !== null) return String(message);
+  return fallback;
+}
+
 const timezoneSelect = document.querySelector("#timezone-select");
 const timezoneHint = document.querySelector("#timezone-hint");
 const saveTimezoneButton = document.querySelector("#save-timezone-button");
@@ -86,7 +94,7 @@ async function loadSettings() {
     accountProviders.textContent = providers.join(", ") || "None";
     populateTimezoneSelect(account.timezone || null);
   } catch (error) {
-    settingsError.textContent = error.message || "Settings could not be loaded.";
+    settingsError.textContent = getErrorMessage(error, "Settings could not be loaded.");
     settingsError.classList.remove("hidden");
   }
 }
@@ -107,7 +115,7 @@ saveTimezoneButton?.addEventListener("click", async () => {
     settingsSuccess.textContent = "Timezone saved.";
     settingsSuccess.classList.remove("hidden");
   } catch (error) {
-    settingsError.textContent = error.message || "Timezone could not be saved.";
+    settingsError.textContent = getErrorMessage(error, "Timezone could not be saved.");
     settingsError.classList.remove("hidden");
   } finally {
     saveTimezoneButton.disabled = false;
@@ -131,7 +139,7 @@ profileForm?.addEventListener("submit", async (event) => {
     profileSuccess.textContent = "Profile saved.";
     profileSuccess.classList.remove("hidden");
   } catch (error) {
-    profileError.textContent = error.message || "Profile could not be saved.";
+    profileError.textContent = getErrorMessage(error, "Profile could not be saved.");
     profileError.classList.remove("hidden");
   } finally {
     saveProfileButton.disabled = false;
@@ -144,7 +152,7 @@ logoutButton?.addEventListener("click", async () => {
     await requestJson("/auth/logout", { method: "POST" });
     window.location.assign("/");
   } catch (error) {
-    settingsError.textContent = error.message || "You could not be signed out.";
+    settingsError.textContent = getErrorMessage(error, "You could not be signed out.");
     settingsError.classList.remove("hidden");
     logoutButton.disabled = false;
   }

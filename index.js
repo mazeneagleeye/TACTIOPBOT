@@ -138,6 +138,7 @@ const app = express();
 const PORT = Number(process.env.PORT || process.env.SERVER_PORT || 3000);
 const HEARTBEAT_INTERVAL_MS = 30_000;
 let discordWebRouter = null;
+let server = null;
 
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
@@ -223,20 +224,37 @@ app.get(
 app.use((req, res) => {
   res.status(404).json({ error: "Not Found" });
 });
-
-const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🌐 running on http://0.0.0.0:${PORT}`);
-});
-
-server.on("error", (error) => {
-  if (error.code === "EADDRINUSE") {
-    console.error(`❌ Port ${PORT} is already in use`);
-  } else {
-    console.error(`❌ HTTP server error: ${error.message}`);
-  }
-  process.exit(1);
-});
 let shutdownPromise = null;
+
+async function startServer() {
+  try {
+    const result = await connectToDatabase();
+    discordWebRouter = createDiscordOAuthRouter({ ...result, discordClient: client });
+    console.log("[mongodb] Website database routes are ready.");
+
+    server = app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🌐 running on http://0.0.0.0:${PORT}`);
+    });
+
+    server.on("error", (error) => {
+      if (error.code === "EADDRINUSE") {
+        console.error(`❌ Port ${PORT} is already in use`);
+      } else {
+        console.error(`❌ HTTP server error: ${error.message}`);
+      }
+      process.exit(1);
+    });
+  } catch (error) {
+    const reason = process.env.MONGODB_URI
+      ? `Startup connection check failed (${error?.name || "Error"}: ${error?.message || "unknown"}).`
+      : "Startup connection check failed: MONGODB_URI is not configured.";
+    console.error(`[mongodb] ${reason}`);
+    console.error(`[mongodb] Full error:`, error);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 function shutdown(signal) {
   if (shutdownPromise) return shutdownPromise;
@@ -260,9 +278,11 @@ function shutdown(signal) {
     }
 
     try {
-      await new Promise((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      });
+      if (server) {
+        await new Promise((resolve, reject) => {
+          server.close((error) => (error ? reject(error) : resolve()));
+        });
+      }
     } catch (error) {
       console.error(`[shutdown] HTTP server cleanup failed (${error?.name || "Error"}).`);
       failed = true;
@@ -288,19 +308,6 @@ function shutdown(signal) {
 
   return shutdownPromise;
 }
-
-(async () => {
-  try {
-    const result = await connectToDatabase();
-    discordWebRouter = createDiscordOAuthRouter({ ...result, discordClient: client });
-    console.log("[mongodb] Website database routes are ready.");
-  } catch (error) {
-    const reason = process.env.MONGODB_URI
-      ? `Startup connection check failed (${error?.name || "Error"}).`
-      : "Startup connection check failed: MONGODB_URI is not configured.";
-    console.error(`[mongodb] ${reason}`);
-  }
-})();
 
 client.on("interactionCreate", async (interaction) => {
   try {

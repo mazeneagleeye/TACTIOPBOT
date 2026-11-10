@@ -48,6 +48,14 @@ function setNotice(message, kind = "") {
   elements.accountStatus.className = `war-notice${kind ? ` is-${kind}` : ""}`;
 }
 
+function getErrorMessage(error, fallback) {
+  if (!error) return fallback;
+  const message = error.message;
+  if (typeof message === "string" && message.length > 0) return message;
+  if (typeof message === "object" && message !== null) return String(message);
+  return fallback;
+}
+
 function setFeedback(element, message, kind = "") {
   element.textContent = message;
   element.className = `feedback${kind ? ` feedback-${kind}` : ""}`;
@@ -350,7 +358,7 @@ async function saveWar() {
     updateViews();
     return response.war;
   } catch (error) {
-    setFeedback(elements.saveStatus, error.message || "Could not save your Clan War.", "error");
+    setFeedback(elements.saveStatus, getErrorMessage(error, "Could not save your Clan War."), "error");
     return null;
   } finally {
     updateViews();
@@ -393,7 +401,7 @@ async function loadHistory() {
       elements.warHistory.textContent = "Sign in with Google to view saved Clan Wars.";
       return;
     }
-    elements.warHistory.textContent = error.message || "Could not load War History.";
+    elements.warHistory.textContent = getErrorMessage(error, "Could not load War History.");
   }
 }
 
@@ -412,7 +420,7 @@ async function openWar(warId) {
     setFeedback(elements.saveStatus, "Saved Clan War loaded. Edits remain available after its scheduled time.", "success");
     updateViews();
   } catch (error) {
-    setFeedback(elements.saveStatus, error.message || "Could not open this Clan War.", "error");
+    setFeedback(elements.saveStatus, getErrorMessage(error, "Could not open this Clan War."), "error");
   }
 }
 
@@ -456,7 +464,7 @@ async function generatePoster() {
     elements.posterSection.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     clearPosterPreview();
-    setFeedback(elements.posterStatus, error.message || "Could not generate the poster.", "error");
+    setFeedback(elements.posterStatus, getErrorMessage(error, "Could not generate the poster."), "error");
   } finally {
     updateViews();
   }
@@ -482,7 +490,7 @@ async function copyText() {
     }
     setFeedback(elements.copyStatus, "Clan War text copied.", "success");
   } catch (error) {
-    setFeedback(elements.copyStatus, error.message || "Could not copy the Clan War text.", "error");
+    setFeedback(elements.copyStatus, getErrorMessage(error, "Could not copy the Clan War text."), "error");
   }
 }
 
@@ -502,7 +510,7 @@ async function autoBalance() {
     setPlayers(response.players);
     setFeedback(elements.saveStatus, "Teams balanced using the minimum possible rank difference.", "success");
   } catch (error) {
-    setFeedback(elements.saveStatus, error.message || "Could not balance teams.", "error");
+    setFeedback(elements.saveStatus, getErrorMessage(error, "Could not balance teams."), "error");
   } finally {
     updateViews();
   }
@@ -540,7 +548,7 @@ async function initialize() {
       elements.warHistorySection.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   } catch (error) {
-    setNotice(error.message || "Could not check your account.", "error");
+    setNotice(getErrorMessage(error, "Could not check your account."), "error");
   } finally {
     updateViews();
   }
